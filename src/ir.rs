@@ -13,10 +13,12 @@ use crate::sema;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IrType {
+    Void,
     Int,
     Char,
     Bool,
     Pointer(Box<IrType>),
+    Struct(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,11 +30,13 @@ pub struct Local {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Constant(i64),
+    StringLiteral(Vec<u8>),
     LoadLocal { name: String, ty: IrType },
     StoreLocal { name: String, ty: IrType },
     AddressLocal { name: String, ty: IrType },
     Load { ty: IrType },
     Store { ty: IrType },
+    Scale { bytes: i64 },
     Unary { operator: UnaryOperator, ty: IrType },
     Binary { operator: BinaryOperator, ty: IrType },
     Call { name: String, arguments: usize, ty: IrType },
@@ -50,6 +54,7 @@ pub struct BasicBlock {
 
 #[derive(Clone, Debug)]
 pub struct TypedProgram {
+    pub structs: BTreeMap<String, Vec<(String, IrType)>>,
     pub functions: BTreeMap<String, IrFunction>,
 }
 
@@ -73,7 +78,7 @@ pub fn lower(program: &Program) -> Result<TypedProgram, Vec<sema::SemanticError>
             (name, function)
         })
         .collect();
-    Ok(TypedProgram { functions })
+    Ok(TypedProgram { structs: BTreeMap::new(), functions })
 }
 
 fn fold_constants(program: &Program) -> Program {
@@ -166,8 +171,9 @@ fn fold_expression(expression: &mut Expression) {
         }
         Expression::Integer { .. }
         | Expression::Character { .. }
+        | Expression::String { .. }
         | Expression::Boolean { .. }
-        | Expression::Name { .. } => {}
+        | Expression::Name { .. } | Expression::Field { .. } => {}
     }
 }
 
@@ -460,6 +466,9 @@ impl FunctionBuilder<'_> {
             Expression::Character { value, .. } => {
                 self.push(id, Instruction::Constant(i64::from(*value)));
             }
+                Expression::String { value, .. } => {
+                    self.push(id, Instruction::StringLiteral(value.clone()));
+                }
             Expression::Boolean { value, .. } => {
                 self.push(id, Instruction::Constant(i64::from(*value)));
             }
@@ -528,14 +537,9 @@ impl FunctionBuilder<'_> {
             Expression::Index { base, index, .. } => {
                 self.expression(id, base);
                 self.expression(id, index);
-                self.push(id, Instruction::Constant(8));
-                self.push(
-                    id,
-                    Instruction::Binary {
-                        operator: BinaryOperator::Multiply,
-                        ty: IrType::Int,
-                    },
-                );
+                self.push(id, Instruction::Scale {
+                    bytes: pointee_size(&self.expression_type(base)),
+                });
                 self.push(
                     id,
                     Instruction::Binary {
@@ -549,6 +553,15 @@ impl FunctionBuilder<'_> {
                         ty: expression_type(expression),
                     },
                 );
+            }
+            Expression::Field { base, .. } => {
+                self.expression(id, base);
+                self.push(id, Instruction::Constant(0));
+                self.push(id, Instruction::Binary {
+                    operator: BinaryOperator::Add,
+                    ty: IrType::Pointer(Box::new(expression_type(expression))),
+                });
+                self.push(id, Instruction::Load { ty: expression_type(expression) });
             }
         }
     }
@@ -574,14 +587,9 @@ impl FunctionBuilder<'_> {
             Expression::Index { base, index, .. } => {
                 self.expression(id, base);
                 self.expression(id, index);
-                self.push(id, Instruction::Constant(8));
-                self.push(
-                    id,
-                    Instruction::Binary {
-                        operator: BinaryOperator::Multiply,
-                        ty: IrType::Int,
-                    },
-                );
+                self.push(id, Instruction::Scale {
+                    bytes: pointee_size(&self.expression_type(base)),
+                });
                 self.push(
                     id,
                     Instruction::Binary {
@@ -596,6 +604,16 @@ impl FunctionBuilder<'_> {
 
     fn local(&self, name: &str) -> Option<&Local> {
         self.locals.iter().find(|local| local.name == name)
+    }
+
+    fn expression_type(&self, expression: &Expression) -> IrType {
+        match expression {
+            Expression::Name { value, .. } => self
+                .local(value)
+                .map(|local| local.ty.clone())
+                .unwrap_or(IrType::Int),
+            _ => expression_type(expression),
+        }
     }
 
     fn push(&mut self, id: usize, instruction: Instruction) {
@@ -625,6 +643,7 @@ fn expression_type(expression: &Expression) -> IrType {
     match expression {
         Expression::Integer { .. } => IrType::Int,
         Expression::Character { .. } => IrType::Char,
+        Expression::String { .. } => IrType::Pointer(Box::new(IrType::Char)),
         Expression::Boolean { .. } => IrType::Bool,
         Expression::Name { .. } => IrType::Int,
         Expression::Unary {
@@ -634,15 +653,26 @@ fn expression_type(expression: &Expression) -> IrType {
         } => IrType::Pointer(Box::new(expression_type(operand))),
         Expression::Unary { operand, .. } => expression_type(operand),
         Expression::Binary { left, .. } => expression_type(left),
-        Expression::Call { .. } | Expression::Index { .. } => IrType::Int,
+        Expression::Call { .. } | Expression::Index { .. } | Expression::Field { .. } => IrType::Int,
     }
 }
 
 fn ir_type(ty: &Type) -> IrType {
     match ty {
+        Type::Void => IrType::Void,
         Type::Int => IrType::Int,
         Type::Char => IrType::Char,
         Type::Pointer(inner) => IrType::Pointer(Box::new(ir_type(inner))),
+        Type::Struct(name) => IrType::Struct(name.clone()),
+    }
+}
+
+fn pointee_size(ty: &IrType) -> i64 {
+    match ty {
+        IrType::Pointer(inner) => pointee_size(inner),
+        IrType::Char => 1,
+        IrType::Bool => 1,
+        IrType::Int | IrType::Void | IrType::Struct(_) => 8,
     }
 }
 

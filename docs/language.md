@@ -16,9 +16,9 @@ K is intended for systems work where representation and cost matter. The languag
 
 Source is UTF-8, but the initial grammar is ASCII. Whitespace is insignificant. A line comment begins with `//` and continues to the end of the line.
 
-Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digits, or `_`. Decimal integer literals contain one or more digits. Character literals use single quotes and support `\\n`, `\\r`, `\\t`, `\\\\`, and `\\'`. The first reserved words are `int`, `char`, `if`, `else`, `while`, `return`, `let`, `true`, and `false`.
+Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digits, or `_`. Decimal integer literals contain one or more digits. Character literals use single quotes and support `\\n`, `\\r`, `\\t`, `\\\\`, and `\\'`; strings use double quotes and support the same escapes plus `\\\"`. The first reserved words are `int`, `char`, `if`, `else`, `while`, `return`, `let`, `true`, and `false`; `void` is recognized in type position.
 
-The initial operator and punctuation set is `+ - * / = == != < <= > >= & ; , ( ) { } [ ]`.
+The initial operator and punctuation set is `+ - * / = == != < <= > >= & ; , ( ) { } [ ] .`.
 
 ## Parsed core syntax
 
@@ -29,9 +29,27 @@ int main() {
 }
 ```
 
-The parser currently accepts function definitions with `int`, `char`, or pointer return types, pointer parameters, braced blocks, `let` declarations, assignments to variables or memory locations, `return`, `if`/`else`, `while`, expression statements, calls, character literals, unary `-`, `&`, and `*`, indexing, and binary arithmetic/comparison operators. Pointer and index operations use machine-word loads and stores in the initial backend; bounds checks are intentionally absent.
+The parser currently accepts function definitions with `void`, `int`, `char`, or pointer return types, pointer parameters, braced blocks, `let` declarations, assignments to variables or memory locations, `return`, `if`/`else`, `while`, expression statements, calls, character and string literals, unary `-`, `&`, and `*`, indexing, and binary arithmetic/comparison operators. String literals lower to static zero-terminated bytes and have type `char*`. Pointer indexing scales by the pointee size; bounds checks are intentionally absent.
 
 The grammar remains provisional. Before syntax is stabilized, the compiler must answer: declaration forms, function types, arrays, pointer spelling, casts, modules, and whether `let` permits inference everywhere.
+
+## Structs
+
+Struct declarations use explicit fields and C-like field access:
+
+```k
+struct Token {
+    int kind;
+    int start;
+}
+```
+
+Named struct types may be used in function signatures, and fields are selected
+with `value.field`. A pointer to a struct may also use the same selector; the
+compiler treats it as implicit dereference for this prototype. Struct layout is
+ordered and has no hidden allocation or runtime metadata. Field offsets and
+complete aggregate lowering are still being completed before this syntax is
+used by the self-hosted compiler.
 
 ## Planned primitive types
 

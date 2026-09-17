@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use k_compiler::lexer::{Lexer, SpannedToken, TokenKind};
 use k_compiler::parser::parse;
 use k_compiler::sema::check;
-use k_compiler::codegen::emit;
+use k_compiler::driver::compile_source;
 
 fn main() -> ExitCode {
     let mut arguments = env::args().skip(1);
@@ -44,6 +44,17 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             };
             emit_file(&path)
+        }
+        "compile" => {
+            let Some(input) = arguments.next() else {
+                eprintln!("k compile: expected an input .k source file");
+                return ExitCode::from(2);
+            };
+            let Some(output) = arguments.next() else {
+                eprintln!("k compile: expected an output assembly file");
+                return ExitCode::from(2);
+            };
+            compile_file(&input, &output)
         }
         "help" | "--help" | "-h" => {
             print_usage();
@@ -138,27 +149,14 @@ fn check_file(path: &str) -> ExitCode {
 }
 
 fn emit_file(path: &str) -> ExitCode {
-    let source = match fs::read_to_string(path) {
+    let source = match read_source(path) {
         Ok(source) => source,
         Err(error) => {
             eprintln!("k emit: cannot read `{path}`: {error}");
             return ExitCode::from(1);
         }
     };
-    let program = match parse(&source) {
-        Ok(program) => program,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::from(1);
-        }
-    };
-    if let Err(errors) = check(&program) {
-        for error in errors {
-            eprintln!("{error}");
-        }
-        return ExitCode::from(1);
-    }
-    match emit(&program) {
+    match compile_source(&source) {
         Ok(assembly) => {
             print!("{assembly}");
             ExitCode::SUCCESS
@@ -170,6 +168,35 @@ fn emit_file(path: &str) -> ExitCode {
     }
 }
 
+fn compile_file(input: &str, output: &str) -> ExitCode {
+    let source = match read_source(input) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("k compile: cannot read `{input}`: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let assembly = match compile_source(&source) {
+        Ok(assembly) => assembly,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(1);
+        }
+    };
+    match fs::write(output, assembly) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("k compile: cannot write `{output}`: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn read_source(path: &str) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    String::from_utf8(bytes).map_err(|error| format!("source is not UTF-8: {error}"))
+}
+
 fn print_usage() {
-    println!("K compiler prototype\n\nUsage:\n  k lex <file.k>    Print the source tokens\n  k parse <file.k>  Print the parsed AST\n  k check <file.k>  Check names and types\n  k emit <file.k>   Emit x86-64 System V assembly\n  k help            Show this help\n");
+    println!("K compiler prototype\n\nUsage:\n  k lex <file.k>          Print the source tokens\n  k parse <file.k>        Print the parsed AST\n  k check <file.k>        Check names and types\n  k emit <file.k>         Emit x86-64 System V assembly\n  k compile <in.k> <out.s> Compile source to an assembly file\n  k help                  Show this help\n");
 }

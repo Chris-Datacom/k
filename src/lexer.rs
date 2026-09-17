@@ -34,8 +34,10 @@ pub enum TokenKind {
     Identifier(String),
     Integer(String),
     Character(u8),
+    StringLiteral(Vec<u8>),
     Int,
     Char,
+    Struct,
     If,
     Else,
     While,
@@ -63,6 +65,7 @@ pub enum TokenKind {
     RightBrace,
     LeftBracket,
     RightBracket,
+    Dot,
     Eof,
 }
 
@@ -71,6 +74,7 @@ impl TokenKind {
         match text {
             "int" => Self::Int,
             "char" => Self::Char,
+            "struct" => Self::Struct,
             "if" => Self::If,
             "else" => Self::Else,
             "while" => Self::While,
@@ -89,8 +93,10 @@ impl fmt::Display for TokenKind {
             Self::Identifier(value) => write!(formatter, "identifier({value})"),
             Self::Integer(value) => write!(formatter, "integer({value})"),
             Self::Character(value) => write!(formatter, "character({value})"),
+            Self::StringLiteral(value) => write!(formatter, "string({value:?})"),
             Self::Int => write!(formatter, "int"),
             Self::Char => write!(formatter, "char"),
+            Self::Struct => write!(formatter, "struct"),
             Self::If => write!(formatter, "if"),
             Self::Else => write!(formatter, "else"),
             Self::While => write!(formatter, "while"),
@@ -118,6 +124,7 @@ impl fmt::Display for TokenKind {
             Self::RightBrace => write!(formatter, "}}"),
             Self::LeftBracket => write!(formatter, "["),
             Self::RightBracket => write!(formatter, "]"),
+            Self::Dot => write!(formatter, "."),
             Self::Eof => write!(formatter, "eof"),
         }
     }
@@ -246,6 +253,39 @@ impl<'source> Lexer<'source> {
                 }
                 TokenKind::Character(value)
             }
+            b'"' => {
+                let mut value = Vec::new();
+                loop {
+                    match self.advance() {
+                        Some(b'"') => break,
+                        Some(b'\\') => match self.advance() {
+                            Some(b'n') => value.push(b'\n'),
+                            Some(b'r') => value.push(b'\r'),
+                            Some(b't') => value.push(b'\t'),
+                            Some(b'\\') => value.push(b'\\'),
+                            Some(b'"') => value.push(b'"'),
+                            Some(escaped) => return Err(LexError {
+                                span: Span { start, end: self.cursor },
+                                message: format!("unknown string escape `\\{escaped}`"),
+                            }),
+                            None => return Err(LexError {
+                                span: Span { start, end: self.cursor },
+                                message: "unterminated string literal".to_owned(),
+                            }),
+                        },
+                        Some(byte @ 0x20..=0x7e) => value.push(byte),
+                        Some(byte) => return Err(LexError {
+                            span: Span { start, end: self.cursor },
+                            message: format!("invalid string byte 0x{byte:02x}"),
+                        }),
+                        None => return Err(LexError {
+                            span: Span { start, end: self.cursor },
+                            message: "unterminated string literal".to_owned(),
+                        }),
+                    }
+                }
+                TokenKind::StringLiteral(value)
+            }
             b'+' => TokenKind::Plus,
             b'-' => TokenKind::Minus,
             b'*' => TokenKind::Star,
@@ -278,6 +318,7 @@ impl<'source> Lexer<'source> {
             b'}' => TokenKind::RightBrace,
             b'[' => TokenKind::LeftBracket,
             b']' => TokenKind::RightBracket,
+            b'.' => TokenKind::Dot,
             _ => {
                 return Err(LexError {
                     span: Span {
@@ -362,5 +403,13 @@ mod tests {
             .map(|item| item.unwrap().token)
             .collect();
         assert_eq!(tokens, vec![TokenKind::Character(b'K'), TokenKind::Character(b'\n'), TokenKind::Eof]);
+    }
+
+    #[test]
+    fn lexes_string_literals() {
+        let tokens: Vec<_> = Lexer::new("\"K\\n\"")
+            .map(|item| item.unwrap().token)
+            .collect();
+        assert_eq!(tokens, vec![TokenKind::StringLiteral(vec![b'K', b'\n']), TokenKind::Eof]);
     }
 }

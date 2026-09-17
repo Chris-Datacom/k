@@ -13,7 +13,22 @@ use crate::lexer::{LexError, Lexer, Span, SpannedToken, TokenKind};
 /// A complete K source file.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Program {
+    pub structs: Vec<StructDefinition>,
     pub functions: Vec<Function>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructDefinition {
+    pub name: String,
+    pub fields: Vec<StructField>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructField {
+    pub name: String,
+    pub ty: Type,
     pub span: Span,
 }
 
@@ -38,9 +53,11 @@ pub struct Parameter {
 /// The types currently accepted by the parser.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
+    Void,
     Int,
     Char,
     Pointer(Box<Type>),
+    Struct(String),
 }
 
 /// A braced sequence of statements.
@@ -96,6 +113,10 @@ pub enum Expression {
         value: u8,
         span: Span,
     },
+    String {
+        value: Vec<u8>,
+        span: Span,
+    },
     Boolean {
         value: bool,
         span: Span,
@@ -123,6 +144,11 @@ pub enum Expression {
     Index {
         base: Box<Expression>,
         index: Box<Expression>,
+        span: Span,
+    },
+    Field {
+        base: Box<Expression>,
+        field: String,
         span: Span,
     },
 }
@@ -182,12 +208,42 @@ impl Parser {
     fn parse_program(mut self) -> Result<Program, ParseError> {
         let start = self.current_span().start;
         let mut functions = Vec::new();
+        let mut structs = Vec::new();
         while !self.at(&TokenKind::Eof) {
-            functions.push(self.parse_function()?);
+            if self.at(&TokenKind::Struct) {
+                structs.push(self.parse_struct()?);
+            } else {
+                functions.push(self.parse_function()?);
+            }
         }
         let end = self.current_span().end;
         Ok(Program {
+            structs,
             functions,
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_struct(&mut self) -> Result<StructDefinition, ParseError> {
+        let start = self.expect(TokenKind::Struct)?.start;
+        let (name, _) = self.expect_identifier("struct name")?;
+        self.expect(TokenKind::LeftBrace)?;
+        let mut fields = Vec::new();
+        while !self.at(&TokenKind::RightBrace) && !self.at(&TokenKind::Eof) {
+            let field_start = self.current_span().start;
+            let ty = self.parse_type()?;
+            let (field_name, field_span) = self.expect_identifier("field name")?;
+            self.expect(TokenKind::Semicolon)?;
+            fields.push(StructField {
+                name: field_name,
+                ty,
+                span: Span { start: field_start, end: field_span.end },
+            });
+        }
+        let end = self.expect(TokenKind::RightBrace)?.end;
+        Ok(StructDefinition {
+            name,
+            fields,
             span: Span { start, end },
         })
     }
@@ -232,6 +288,11 @@ impl Parser {
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
         let mut ty = match self.take().token {
+            TokenKind::Identifier(value) if value == "void" => Ok(Type::Void),
+            TokenKind::Struct => {
+                let (name, _) = self.expect_identifier("struct name")?;
+                Ok(Type::Struct(name))
+            }
             TokenKind::Int => Ok(Type::Int),
             TokenKind::Char => Ok(Type::Char),
             token => Err(self.error_expected("type", token)),
@@ -431,6 +492,7 @@ impl Parser {
         match token.token {
             TokenKind::Integer(value) => Ok(Expression::Integer { value, span }),
             TokenKind::Character(value) => Ok(Expression::Character { value, span }),
+            TokenKind::StringLiteral(value) => Ok(Expression::String { value, span }),
             TokenKind::True => Ok(Expression::Boolean { value: true, span }),
             TokenKind::False => Ok(Expression::Boolean { value: false, span }),
             TokenKind::Identifier(value) => Ok(Expression::Name { value, span }),
@@ -447,6 +509,16 @@ impl Parser {
                     span: Span { start: expression.span().start, end },
                     base: Box::new(expression),
                     index: Box::new(index),
+                };
+                continue;
+            }
+            if self.consume(TokenKind::Dot) {
+                let (field, field_span) = self.expect_identifier("field name")?;
+                let start = expression.span().start;
+                expression = Expression::Field {
+                    base: Box::new(expression),
+                    field,
+                    span: Span { start, end: field_span.end },
                 };
                 continue;
             }
@@ -549,12 +621,13 @@ impl Expression {
         match self {
             Self::Integer { span, .. }
             | Self::Character { span, .. }
+            | Self::String { span, .. }
             | Self::Boolean { span, .. }
             | Self::Name { span, .. }
             | Self::Unary { span, .. }
             | Self::Binary { span, .. }
             | Self::Call { span, .. } => *span,
-            Self::Index { span, .. } => *span,
+            Self::Index { span, .. } | Self::Field { span, .. } => *span,
         }
     }
 }
@@ -626,6 +699,36 @@ mod tests {
             program.functions[0].body.statements[0],
             Statement::Return {
                 value: Some(Expression::Index { .. }),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_void_functions_and_strings() {
+        let program = parse("void print() { return; } char* text() { return \"hi\"; }").unwrap();
+        assert_eq!(program.functions[0].return_type, Type::Void);
+        assert!(matches!(
+            program.functions[1].body.statements[0],
+            Statement::Return {
+                value: Some(Expression::String { .. }),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_structs_and_field_access() {
+        let program = parse(
+            "struct Token { int kind; int start; } int read(struct Token* token) { return token.kind; }",
+        )
+        .unwrap();
+        assert_eq!(program.structs[0].name, "Token");
+        assert_eq!(program.structs[0].fields.len(), 2);
+        assert!(matches!(
+            program.functions[0].body.statements[0],
+            Statement::Return {
+                value: Some(Expression::Field { .. }),
                 ..
             }
         ));

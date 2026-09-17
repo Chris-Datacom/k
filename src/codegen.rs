@@ -31,16 +31,22 @@ pub fn emit(program: &Program) -> Result<String, CodegenError> {
 pub fn emit_typed(program: &TypedProgram) -> Result<String, CodegenError> {
     let mut generator = Generator {
         output: String::from(".intel_syntax noprefix\n.text\n"),
+        rodata: String::new(),
         label: 0,
     };
     for (name, function) in &program.functions {
         generator.function(name, function)?;
     }
-    Ok(generator.output)
+    if generator.rodata.is_empty() {
+        Ok(generator.output)
+    } else {
+        Ok(format!("{}\n.section .rodata\n{}", generator.output, generator.rodata))
+    }
 }
 
 struct Generator {
     output: String,
+    rodata: String,
     label: usize,
 }
 
@@ -106,6 +112,18 @@ impl Generator {
         for instruction in &block.instructions {
             match instruction {
                 Instruction::Constant(value) => self.output.push_str(&format!("  push {value}\n")),
+                Instruction::StringLiteral(value) => {
+                    let label = self.fresh_label("string");
+                    self.rodata.push_str(&format!("{label}:\n  .byte "));
+                    for (index, byte) in value.iter().chain(std::iter::once(&0)).enumerate() {
+                        if index != 0 {
+                            self.rodata.push_str(", ");
+                        }
+                        self.rodata.push_str(&byte.to_string());
+                    }
+                    self.rodata.push('\n');
+                    self.output.push_str(&format!("  lea rax, {label}[rip]\n  push rax\n"));
+                }
                 Instruction::LoadLocal { name, .. } => self.output.push_str(&format!(
                     "  push QWORD PTR [rbp-{}]\n",
                     slots
@@ -127,6 +145,9 @@ impl Generator {
                 Instruction::Load { .. } => {
                     self.output
                         .push_str("  pop rax\n  mov rax, QWORD PTR [rax]\n  push rax\n");
+                }
+                Instruction::Scale { bytes } => {
+                    self.output.push_str(&format!("  pop rax\n  imul rax, {bytes}\n  push rax\n"));
                 }
                 Instruction::Store { .. } => {
                     self.output
@@ -240,8 +261,24 @@ mod tests {
         )
         .unwrap();
         let assembly = emit(&program).unwrap();
-        assert!(assembly.contains("push 8"));
+        assert!(assembly.contains("imul rax, 8"));
         assert!(assembly.contains("mov QWORD PTR [rdi], rax"));
         assert!(assembly.contains("jmp .Lblock_"));
+    }
+
+    #[test]
+    fn emits_string_data_and_byte_pointer_indexing() {
+        let program = parse("char* text() { return \"hi\"; }").unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains(".section .rodata"));
+        assert!(assembly.contains(".byte 104, 105, 0"));
+        assert!(assembly.contains("lea rax, .Lstring_"));
+    }
+
+    #[test]
+    fn scales_char_pointers_by_one() {
+        let program = parse("char read(char* ptr) { return ptr[1]; }").unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains("imul rax, 1"));
     }
 }

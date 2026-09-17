@@ -18,3 +18,4 @@ pub mod parser;
 pub mod sema;
 pub mod codegen;
 pub mod ir;
+pub mod driver;

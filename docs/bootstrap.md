@@ -20,6 +20,10 @@ silently assuming an operating-system process.
 
 Implement a K version of the lexer and parser using only the stable subset already supported by the Rust compiler. Keep the Rust compiler as the trusted reference compiler. Differential tests should compare tokens, diagnostics, and generated output for the same inputs.
 
+The host boundary is now explicit: compiler stages accept source buffers
+through `driver::compile_source`, while the command-line `compile` command
+only reads UTF-8 source bytes and writes the resulting assembly artifact.
+
 ## Stage 3: K builds K
 
 Compile the K compiler source with the Rust host compiler, then use that resulting K compiler to compile itself. The two outputs must agree on a defined set of source programs. This is the first self-hosting milestone.

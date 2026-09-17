@@ -15,4 +15,6 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
   consumes IR instead of walking the parser AST.
 - Added target-independent IR optimization for constant instruction folding
   and unreachable basic-block pruning.
+- Added `void` returns, zero-terminated string literals, static string data,
+  and pointee-size-aware pointer indexing.
 - Added language, architecture, contribution, and self-hosting documentation.

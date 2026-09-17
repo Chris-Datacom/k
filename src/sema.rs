@@ -35,10 +35,12 @@ pub fn check(program: &Program) -> Result<(), Vec<SemanticError>> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ValueType {
+    Void,
     Int,
     Char,
     Bool,
     Pointer(Box<ValueType>),
+    Struct(String),
     Function {
         return_type: Type,
         parameters: Vec<Type>,
@@ -49,18 +51,22 @@ enum ValueType {
 impl ValueType {
     fn from_type(ty: &Type) -> Self {
         match ty {
+            Type::Void => Self::Void,
             Type::Int => Self::Int,
             Type::Char => Self::Char,
             Type::Pointer(inner) => Self::Pointer(Box::new(Self::from_type(inner))),
+            Type::Struct(name) => Self::Struct(name.clone()),
         }
     }
 
     fn display_name(&self) -> &'static str {
         match self {
             Self::Int => "int",
+            Self::Void => "void",
             Self::Char => "char",
             Self::Bool => "bool",
             Self::Pointer(_) => "pointer",
+            Self::Struct(_) => "struct",
             Self::Function { .. } => "function",
             Self::Invalid => "invalid expression",
         }
@@ -70,6 +76,7 @@ impl ValueType {
 struct Checker<'program> {
     program: &'program Program,
     functions: HashMap<String, ValueType>,
+    structs: HashMap<String, HashMap<String, Type>>,
     scopes: Vec<HashMap<String, ValueType>>,
     errors: Vec<SemanticError>,
 }
@@ -79,6 +86,7 @@ impl<'program> Checker<'program> {
         Self {
             program,
             functions: HashMap::new(),
+            structs: HashMap::new(),
             scopes: Vec::new(),
             errors: Vec::new(),
         }
@@ -86,9 +94,11 @@ impl<'program> Checker<'program> {
 
     fn run(mut self) -> Result<(), Vec<SemanticError>> {
         self.collect_functions();
+        self.collect_structs();
         for function in &self.program.functions {
             self.check_function(function);
         }
+
         if self.errors.is_empty() {
             Ok(())
         } else {
@@ -102,6 +112,7 @@ impl<'program> Checker<'program> {
                 self.error(function.span, format!("duplicate function `{}`", function.name));
                 continue;
             }
+
             self.functions.insert(
                 function.name.clone(),
                 ValueType::Function {
@@ -113,6 +124,22 @@ impl<'program> Checker<'program> {
                         .collect(),
                 },
             );
+        }
+    }
+
+    fn collect_structs(&mut self) {
+        for definition in &self.program.structs {
+            if self.structs.contains_key(&definition.name) {
+                self.error(definition.span, format!("duplicate struct `{}`", definition.name));
+                continue;
+            }
+            let mut fields = HashMap::new();
+            for field in &definition.fields {
+                if fields.insert(field.name.clone(), field.ty.clone()).is_some() {
+                    self.error(field.span, format!("duplicate field `{}`", field.name));
+                }
+            }
+            self.structs.insert(definition.name.clone(), fields);
         }
     }
 
@@ -148,7 +175,8 @@ impl<'program> Checker<'program> {
                     let expected = ValueType::from_type(return_type);
                     self.require_same(&expected, &actual, *span, "return value");
                 }
-                None => self.error(*span, format!("expected a {} return value", type_name(return_type))),
+                None if *return_type != Type::Void => self.error(*span, format!("expected a {} return value", type_name(return_type))),
+                None => {}
             },
             Statement::If {
                 condition,
@@ -187,6 +215,7 @@ impl<'program> Checker<'program> {
         match expression {
             Expression::Integer { .. } => ValueType::Int,
             Expression::Character { .. } => ValueType::Char,
+            Expression::String { .. } => ValueType::Pointer(Box::new(ValueType::Char)),
             Expression::Boolean { .. } => ValueType::Bool,
             Expression::Name { value, span } => self.resolve_name(value, *span),
             Expression::Unary {
@@ -249,6 +278,30 @@ impl<'program> Checker<'program> {
                     }
                 }
             }
+            Expression::Field { base, field, span } => {
+                let base_type = self.check_expression(base);
+                let struct_name = match base_type {
+                    ValueType::Struct(name) => Some(name),
+                    ValueType::Pointer(inner) => match *inner {
+                        ValueType::Struct(name) => Some(name),
+                        _ => None,
+                    },
+                    ValueType::Invalid => None,
+                    _ => {
+                        self.error(*span, "field access requires a struct".to_owned());
+                        None
+                    }
+                };
+                if let Some(name) = struct_name {
+                    if let Some(fields) = self.structs.get(&name) {
+                        if let Some(ty) = fields.get(field) {
+                            return ValueType::from_type(ty);
+                        }
+                    }
+                    self.error(*span, format!("unknown field `{field}` on struct `{name}`"));
+                }
+                ValueType::Invalid
+            }
         }
     }
 
@@ -257,6 +310,7 @@ impl<'program> Checker<'program> {
             Expression::Name { value, span } => self.resolve_name(value, *span),
             Expression::Unary { operator: UnaryOperator::Dereference, .. }
             | Expression::Index { .. } => self.check_expression(expression),
+            Expression::Field { .. } => self.check_expression(expression),
             _ => {
                 self.error(expression.span(), "assignment target must be a variable or memory location".to_owned());
                 ValueType::Invalid
@@ -409,9 +463,11 @@ impl<'program> Checker<'program> {
 
 fn type_name(ty: &Type) -> &'static str {
     match ty {
+        Type::Void => "void",
         Type::Int => "int",
         Type::Char => "char",
         Type::Pointer(_) => "pointer",
+        Type::Struct(_) => "struct",
     }
 }
 
@@ -455,5 +511,32 @@ mod tests {
     fn accepts_pointer_dereference_and_indexing() {
         let program = parse("int read(int* ptr) { ptr[1] = 7; return *ptr; }").unwrap();
         assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn accepts_void_returns_and_string_pointers() {
+        let program = parse("void print() { return; } char* text() { return \"hi\"; }").unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn rejects_value_return_from_void_function() {
+        let program = parse("void bad() { return 1; }").unwrap();
+        let errors = check(&program).unwrap_err();
+        assert!(errors[0].message.contains("return value requires void"));
+    }
+
+    #[test]
+    fn checks_struct_fields() {
+        let program = parse(
+            "struct Token { int kind; } int read(struct Token* token) { return token.kind; }",
+        )
+        .unwrap();
+        assert!(check(&program).is_ok());
+        let bad = parse(
+            "struct Token { int kind; } int read(struct Token* token) { return token.missing; }",
+        )
+        .unwrap();
+        assert!(check(&bad).unwrap_err()[0].message.contains("unknown field"));
     }
 }

@@ -15,6 +15,7 @@ cargo run -- lex examples/hello.k
 cargo run -- parse examples/hello.k
 cargo run -- check examples/hello.k
 cargo run -- emit examples/hello.k
+cargo run -- compile examples/hello.k target/hello.s
 ```
 
 The command-line tool currently exposes one diagnostic command:
@@ -24,6 +25,7 @@ k lex <file.k>
 k parse <file.k>
 k check <file.k>
 k emit <file.k>
+k compile <input.k> <output.s>
 ```
 
 ## Design direction
@@ -52,6 +54,10 @@ The syntax and guarantees are provisional until marked stable. See [the language
   backend consumes this IR rather than walking the parser AST.
 - IR lowering now folds constant instruction sequences and removes unreachable
   basic blocks before assembly emission.
+- K now supports `void`, string literals as zero-terminated `char*` data, and
+  pointee-aware pointer indexing.
+- `src/driver.rs` provides a filesystem-independent source-to-assembly API;
+  `k compile` is the host file-to-artifact interface.
 - `src/lib.rs`: compiler-library boundary and future pipeline stages.
 - `src/main.rs`: host-side command-line interface.
 - `docs/language.md`: current language contract and open decisions.

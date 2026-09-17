@@ -27,7 +27,11 @@ The command-line binary in `src/main.rs` handles files, arguments, and human-rea
 - `codegen`: emits deterministic x86-64 System V assembly for the first
   supported target. It has no runtime or libc dependency, which is the first
   step toward a freestanding kernel toolchain.
+- String literals are emitted into `.rodata`; indexed pointer arithmetic uses
+  the pointee size recorded by the typed IR.
 - `driver`: coordinates stages and diagnostics without embedding policy in them.
+- `driver::compile_source`: the filesystem-independent source-buffer API;
+  filesystem reads and writes remain in the command-line binary.
 
 ## Design constraints
 
