@@ -43,7 +43,8 @@ cargo run -- compile compiler/hello.k target/hello.s
 The resulting assembly is intended to be assembled and linked on Linux with
 the repository's x86-64 target assumptions. Windows can validate compilation
 and inspect the generated assembly, but cannot execute this Linux syscall
-output natively.
+output natively. Programs defining `main` receive a minimal `_start` wrapper
+that calls `main` and exits with its integer return value.
 
 ## Stage 3: K builds K
 

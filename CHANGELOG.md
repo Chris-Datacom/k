@@ -23,6 +23,7 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
 - Added a Rust pipeline test that compiles `compiler/lexer.k`.
 - Added the freestanding Linux `print(char*)` intrinsic and
   `compiler/hello.k` smoke test.
+- Added a Linux `_start` wrapper so generated `main` programs exit cleanly.
 - Added GitHub Linguist metadata and a VS Code/TextMate syntax grammar for
   `.k` files.
 - Added language, architecture, contribution, and self-hosting documentation.

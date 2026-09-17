@@ -37,6 +37,11 @@ pub fn emit_typed(program: &TypedProgram) -> Result<String, CodegenError> {
     for (name, function) in &program.functions {
         generator.function(name, function)?;
     }
+    if program.functions.contains_key("main") {
+        generator.output.push_str(
+            ".globl _start\n.type _start, @function\n_start:\n  call main\n  mov rdi, rax\n  mov rax, 60\n  syscall\n\n",
+        );
+    }
     if generator.rodata.is_empty() {
         Ok(generator.output)
     } else {
@@ -296,6 +301,15 @@ mod tests {
         assert!(assembly.contains(".section .rodata"));
         assert!(assembly.contains(".byte 104, 105, 0"));
         assert!(assembly.contains("lea rax, .Lstring_"));
+    }
+
+    #[test]
+    fn emits_linux_start_wrapper_for_main() {
+        let program = parse("int main() { return 0; }").unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains(".globl _start"));
+        assert!(assembly.contains("call main"));
+        assert!(assembly.contains("mov rax, 60"));
     }
 
     #[test]
