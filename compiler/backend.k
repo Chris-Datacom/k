@@ -18,6 +18,25 @@ struct BackendInstruction {
     int extra;
 }
 
+// These records mirror the caller-owned IR ranges in parser.k.  A local
+// instruction uses extra as its already-resolved frame slot; name resolution
+// remains a frontend concern.
+struct BackendBlock {
+    int start;
+    int count;
+    int id;
+}
+
+struct BackendFunction {
+    int start;
+    int count;
+    int return_type;
+    int parameter_start;
+    int parameter_count;
+    int block_start;
+    int block_count;
+}
+
 int backend_init(
     struct BackendOutput* output,
     char* data,
@@ -278,4 +297,124 @@ int backend_emit_instruction(
     }
     output.error = 4;
     return 0;
+}
+
+int backend_emit_block(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    struct BackendInstruction* instructions,
+    int instruction_capacity,
+    struct BackendBlock* block
+) {
+    if (block.start < 0 || block.count < 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (block.start > instruction_capacity) {
+        output.error = 7;
+        return 0;
+    }
+    if (block.count > instruction_capacity - block.start) {
+        output.error = 7;
+        return 0;
+    }
+    let index = block.start;
+    let end = block.start + block.count;
+    while (index < end) {
+        let instruction = &instructions[index];
+        if (instruction.kind == 4) {
+            if (backend_load_local(
+                output,
+                scratch,
+                scratch_capacity,
+                instruction.extra,
+                instruction.type_kind
+            ) == 0) {
+                return 0;
+            }
+        } else {
+            if (instruction.kind == 8) {
+                if (backend_store_local(
+                    output,
+                    scratch,
+                    scratch_capacity,
+                    instruction.extra,
+                    instruction.type_kind
+                ) == 0) {
+                    return 0;
+                }
+            } else {
+                if (backend_emit_instruction(output, instruction) == 0) {
+                    return 0;
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return 1;
+}
+
+int backend_emit_function(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    char* name,
+    int name_length,
+    struct BackendInstruction* instructions,
+    int instruction_capacity,
+    struct BackendBlock* blocks,
+    int block_capacity,
+    struct BackendFunction* function
+) {
+    if (name_length < 0) {
+        output.error = 2;
+        return 0;
+    }
+    if (function.start < 0 || function.count < 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.start > instruction_capacity) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.count > instruction_capacity - function.start) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.block_start < 0 || function.block_count < 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.block_start > block_capacity) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.block_count > block_capacity - function.block_start) {
+        output.error = 7;
+        return 0;
+    }
+    if (backend_function_label(output, name, name_length) == 0) {
+        return 0;
+    }
+    if (backend_function_prologue(output) == 0) {
+        return 0;
+    }
+    let block_index = function.block_start;
+    let block_end = function.block_start + function.block_count;
+    while (block_index < block_end) {
+        if (backend_emit_block(
+            output,
+            scratch,
+            scratch_capacity,
+            instructions,
+            instruction_capacity,
+            &blocks[block_index]
+        ) == 0) {
+            return 0;
+        }
+        block_index = block_index + 1;
+    }
+    return 1;
 }
