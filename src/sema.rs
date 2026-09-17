@@ -418,6 +418,12 @@ impl<'program> Checker<'program> {
         if let Some(function_type) = self.functions.get(name) {
             return function_type.clone();
         }
+        if name == "print" {
+            return ValueType::Function {
+                return_type: Type::Void,
+                parameters: vec![Type::Pointer(Box::new(Type::Char))],
+            };
+        }
         self.error(span, format!("undefined name `{name}`"));
         ValueType::Invalid
     }

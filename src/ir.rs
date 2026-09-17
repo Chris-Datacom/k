@@ -41,6 +41,7 @@ pub enum Instruction {
     Unary { operator: UnaryOperator, ty: IrType },
     Binary { operator: BinaryOperator, ty: IrType },
     Call { name: String, arguments: usize, ty: IrType },
+    PrintString(Vec<u8>),
     Pop,
     Branch { then_block: usize, else_block: usize },
     Jump { target: usize },
@@ -444,7 +445,9 @@ impl FunctionBuilder<'_> {
             }
             Statement::Expression { expression, .. } => {
                 self.expression(id, expression);
-                self.push(id, Instruction::Pop);
+                if !is_void_expression(expression) {
+                    self.push(id, Instruction::Pop);
+                }
             }
             Statement::Block(block) => return self.block(id, block),
             Statement::If {
@@ -565,6 +568,14 @@ impl FunctionBuilder<'_> {
                 arguments,
                 ..
             } => {
+                if let Expression::Name { value, .. } = callee.as_ref() {
+                    if value == "print" && arguments.len() == 1 {
+                        if let Expression::String { value, .. } = &arguments[0] {
+                            self.push(id, Instruction::PrintString(value.clone()));
+                            return;
+                        }
+                    }
+                }
                 for argument in arguments {
                     self.expression(id, argument);
                 }
@@ -747,6 +758,14 @@ fn expression_type(expression: &Expression) -> IrType {
         Expression::Binary { left, .. } => expression_type(left),
         Expression::Call { .. } | Expression::Index { .. } | Expression::Field { .. } => IrType::Int,
     }
+}
+
+fn is_void_expression(expression: &Expression) -> bool {
+    matches!(
+        expression,
+        Expression::Call { callee, .. }
+            if matches!(callee.as_ref(), Expression::Name { value, .. } if value == "print")
+    )
 }
 
 fn ir_type(ty: &Type) -> IrType {

@@ -20,6 +20,12 @@ Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digit
 
 The initial operator and punctuation set is `+ - * / = == != < <= > >= & ; , ( ) { } [ ] .`.
 
+The freestanding Linux bootstrap provides a `print(char*)` intrinsic. It
+writes the complete zero-terminated string's payload to standard output using
+the x86-64 `write` system call; it does not allocate or require libc. This
+intrinsic is currently target-specific and exists to make the self-hosting
+bootstrap observable.
+
 ## Parsed core syntax
 
 ```k

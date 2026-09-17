@@ -32,6 +32,19 @@ suite compiles it through the normal pipeline, making it a checked bootstrap
 artifact while the K implementation grows toward keyword and comment
 recognition.
 
+[`compiler/hello.k`](../compiler/hello.k) is the first executable K smoke
+test. It calls the freestanding Linux `print` intrinsic, which lowers to the
+x86-64 `write` system call. The Rust host can compile it with:
+
+```text
+cargo run -- compile compiler/hello.k target/hello.s
+```
+
+The resulting assembly is intended to be assembled and linked on Linux with
+the repository's x86-64 target assumptions. Windows can validate compilation
+and inspect the generated assembly, but cannot execute this Linux syscall
+output natively.
+
 ## Stage 3: K builds K
 
 Compile the K compiler source with the Rust host compiler, then use that resulting K compiler to compile itself. The two outputs must agree on a defined set of source programs. This is the first self-hosting milestone.

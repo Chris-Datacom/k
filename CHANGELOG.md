@@ -21,6 +21,8 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
   lowering.
 - Added the first K-written lexer component with caller-owned `Token` records.
 - Added a Rust pipeline test that compiles `compiler/lexer.k`.
+- Added the freestanding Linux `print(char*)` intrinsic and
+  `compiler/hello.k` smoke test.
 - Added GitHub Linguist metadata and a VS Code/TextMate syntax grammar for
   `.k` files.
 - Added language, architecture, contribution, and self-hosting documentation.

@@ -124,6 +124,21 @@ impl Generator {
                     self.rodata.push('\n');
                     self.output.push_str(&format!("  lea rax, {label}[rip]\n  push rax\n"));
                 }
+                Instruction::PrintString(value) => {
+                    let label = self.fresh_label("string");
+                    self.rodata.push_str(&format!("{label}:\n  .byte "));
+                    for (index, byte) in value.iter().enumerate() {
+                        if index != 0 {
+                            self.rodata.push_str(", ");
+                        }
+                        self.rodata.push_str(&byte.to_string());
+                    }
+                    self.rodata.push('\n');
+                    self.output.push_str(&format!(
+                        "  mov rax, 1\n  mov rdi, 1\n  lea rsi, {label}[rip]\n  mov rdx, {}\n  syscall\n",
+                        value.len()
+                    ));
+                }
                 Instruction::LoadLocal { name, .. } => self.output.push_str(&format!(
                     "  push QWORD PTR [rbp-{}]\n",
                     slots

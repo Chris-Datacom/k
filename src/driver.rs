@@ -61,4 +61,12 @@ mod tests {
         assert!(assembly.contains("add rax, 8"));
         assert!(assembly.contains("mov QWORD PTR [rdi], rax"));
     }
+
+    #[test]
+    fn compiles_the_k_hello_world_program() {
+        let source = include_str!("../compiler/hello.k");
+        let assembly = compile_source(source).expect("hello world should compile");
+        assert!(assembly.contains("mov rax, 1"));
+        assert!(assembly.contains(".byte 72, 101, 108, 108, 111"));
+    }
 }
