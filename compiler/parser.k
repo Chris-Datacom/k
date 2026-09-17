@@ -280,6 +280,63 @@ int lex_one(char* source, int length, int position, struct Token* out) {
     out.start = position;
     out.end = position + 1;
 
+    if (current == '\'') {
+        let next = position + 1;
+        if (next < length) {
+            if (source[next] == '\\') {
+                next = next + 1;
+                if (next < length) {
+                    next = next + 1;
+                }
+            } else {
+                next = next + 1;
+            }
+        }
+        if (next < length) {
+            if (source[next] == '\'') {
+                out.kind = 14;
+                out.end = next + 1;
+                return next + 1;
+            }
+        }
+        out.kind = -1;
+        out.end = next;
+        return next;
+    }
+    if (current == '"') {
+        let next = position + 1;
+        let closed = 0;
+        let literal_scanning = 1;
+        while (literal_scanning == 1) {
+            if (next < length) {
+                if (source[next] == '\\') {
+                    next = next + 1;
+                    if (next < length) {
+                        next = next + 1;
+                    }
+                } else {
+                    if (source[next] == '"') {
+                        closed = 1;
+                        next = next + 1;
+                        literal_scanning = 0;
+                    } else {
+                        next = next + 1;
+                    }
+                }
+            } else {
+                literal_scanning = 0;
+            }
+        }
+        if (closed == 1) {
+            out.kind = 15;
+            out.end = next;
+            return next;
+        }
+        out.kind = -1;
+        out.end = next;
+        return next;
+    }
+
     if (current >= '0') {
         if (current <= '9') {
             let next = position + 1;
@@ -480,6 +537,83 @@ int lex_one(char* source, int length, int position, struct Token* out) {
         return position + 1;
     }
     if (current == '=') {
+        out.kind = 3;
+        if (position + 1 < length) {
+            if (source[position + 1] == '=') {
+                out.end = position + 2;
+                return position + 2;
+            }
+        }
+        return position + 1;
+    }
+    if (current == '!') {
+        if (position + 1 < length) {
+            if (source[position + 1] == '=') {
+                out.kind = 3;
+                out.end = position + 2;
+                return position + 2;
+            }
+        }
+        out.kind = -1;
+        return position + 1;
+    }
+    if (current == '<') {
+        out.kind = 3;
+        if (position + 1 < length) {
+            if (source[position + 1] == '=') {
+                out.end = position + 2;
+                return position + 2;
+            }
+        }
+        return position + 1;
+    }
+    if (current == '>') {
+        out.kind = 3;
+        if (position + 1 < length) {
+            if (source[position + 1] == '=') {
+                out.end = position + 2;
+                return position + 2;
+            }
+        }
+        return position + 1;
+    }
+    if (current == '&') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == ';') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == ',') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '(') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == ')') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '{') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '}') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '[') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == ']') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '.') {
         out.kind = 3;
         return position + 1;
     }
