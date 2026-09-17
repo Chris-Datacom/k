@@ -1,9 +1,9 @@
 //! x86-64 System V code generation from K's typed IR.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
-use crate::ir::{BasicBlock, Instruction, IrFunction, TypedProgram};
+use crate::ir::{BasicBlock, Instruction, IrFunction, IrType, TypedProgram};
 use crate::parser::{BinaryOperator, Program, UnaryOperator};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -33,6 +33,11 @@ pub fn emit_typed(program: &TypedProgram) -> Result<String, CodegenError> {
         output: String::from(".intel_syntax noprefix\n.text\n"),
         rodata: String::new(),
         label: 0,
+        struct_sizes: program
+            .structs
+            .iter()
+            .map(|(name, layout)| (name.clone(), layout.size))
+            .collect(),
     };
     for (name, function) in &program.functions {
         generator.function(name, function)?;
@@ -53,21 +58,31 @@ struct Generator {
     output: String,
     rodata: String,
     label: usize,
+    struct_sizes: BTreeMap<String, i64>,
+}
+
+fn ir_size(ty: &IrType, structs: &BTreeMap<String, i64>) -> i32 {
+    match ty {
+        IrType::Struct(name) => structs.get(name).copied().unwrap_or(8) as i32,
+        _ => 8,
+    }
 }
 
 impl Generator {
     fn function(&mut self, name: &str, function: &IrFunction) -> Result<(), CodegenError> {
         let mut slots = HashMap::new();
-        for (index, local) in function.locals.iter().enumerate() {
-            slots.insert(local.name.clone(), (index as i32 + 1) * 8);
+        let mut frame_size = 0i32;
+        for local in &function.locals {
+            frame_size += ir_size(&local.ty, &self.struct_sizes);
+            slots.insert(local.name.clone(), frame_size);
         }
         let return_label = self.fresh_label("return");
         self.output.push_str(&format!(
             ".globl {name}\n.type {name}, @function\n{name}:\n  push rbp\n  mov rbp, rsp\n"
         ));
-        if !function.locals.is_empty() {
+        if frame_size != 0 {
             self.output
-                .push_str(&format!("  sub rsp, {}\n", function.locals.len() * 8));
+                .push_str(&format!("  sub rsp, {frame_size}\n"));
         }
 
         const ARGUMENT_REGISTERS: [&str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
@@ -328,5 +343,15 @@ mod tests {
         let assembly = emit(&program).unwrap();
         assert!(assembly.contains("add rax, 8"));
         assert!(assembly.contains("mov QWORD PTR [rdi], rax"));
+    }
+
+    #[test]
+    fn reserves_the_complete_size_of_local_structs() {
+        let program = parse(
+            "struct Token { char kind; int start; int end; } int main() { struct Token token; return 0; }",
+        )
+        .unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains("sub rsp, 17"));
     }
 }

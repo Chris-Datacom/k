@@ -55,7 +55,10 @@ with `value.field`. A pointer to a struct may also use the same selector; the
 compiler treats it as implicit dereference for this prototype. Struct layout is
 ordered and has no hidden allocation or runtime metadata. Field offsets and
 complete aggregate lowering are still being completed before this syntax is
-used by the self-hosted compiler.
+used by the self-hosted compiler. Local struct storage is supported with a
+declaration such as `struct Token token;`; the compiler reserves the complete
+layout size in the function frame, and the declaration is initially
+uninitialized.
 
 ## Planned primitive types
 

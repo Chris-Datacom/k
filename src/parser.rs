@@ -75,6 +75,11 @@ pub enum Statement {
         value: Expression,
         span: Span,
     },
+    Declare {
+        ty: Type,
+        name: String,
+        span: Span,
+    },
     Assign {
         target: Expression,
         value: Expression,
@@ -318,6 +323,17 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         match self.peek().token.clone() {
+            TokenKind::Struct => {
+                let start = self.current_span().start;
+                let ty = self.parse_type()?;
+                let (name, name_span) = self.expect_identifier("variable name")?;
+                let end = self.expect(TokenKind::Semicolon)?.end;
+                Ok(Statement::Declare {
+                    ty,
+                    name,
+                    span: Span { start, end: name_span.end.max(end) },
+                })
+            }
             TokenKind::Let => {
                 let start = self.take().span.start;
                 let (name, _) = self.expect_identifier("variable name")?;
@@ -731,6 +747,21 @@ mod tests {
                 value: Some(Expression::Field { .. }),
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn parses_local_struct_declarations() {
+        let program = parse(
+            "struct Token { int kind; int start; } int main() { struct Token token; return 0; }",
+        )
+        .unwrap();
+        assert!(matches!(
+            program.functions[0].body.statements[0],
+            Statement::Declare {
+                ty: Type::Struct(ref name),
+                ..
+            } if name == "Token"
         ));
     }
 }

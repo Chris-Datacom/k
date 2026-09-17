@@ -160,6 +160,9 @@ impl<'program> Checker<'program> {
 
     fn check_statement(&mut self, statement: &Statement, return_type: &Type) {
         match statement {
+            Statement::Declare { ty, name, span } => {
+                self.declare(name.clone(), ValueType::from_type(ty), *span);
+            }
             Statement::Let { name, value, span } => {
                 let value_type = self.check_expression(value);
                 self.declare(name.clone(), value_type, *span);

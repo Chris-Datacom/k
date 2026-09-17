@@ -130,6 +130,7 @@ fn fold_constants(program: &Program) -> Program {
 fn fold_block(block: &mut Block) {
     for statement in &mut block.statements {
         match statement {
+            Statement::Declare { .. } => {}
             Statement::Let { value, .. }
             | Statement::Assign { value, .. }
             | Statement::Expression {
@@ -370,6 +371,10 @@ fn prune_unreachable_blocks(function: &mut IrFunction) {
 fn collect_locals(block: &Block, locals: &mut Vec<Local>) {
     for statement in &block.statements {
         match statement {
+            Statement::Declare { ty, name, .. } => locals.push(Local {
+                name: name.clone(),
+                ty: ir_type(ty),
+            }),
             Statement::Let { name, value, .. } => locals.push(Local {
                 name: name.clone(),
                 ty: expression_type(value),
@@ -422,6 +427,7 @@ impl FunctionBuilder<'_> {
                     );
                 }
             }
+            Statement::Declare { .. } => {}
             Statement::Assign { target, value, .. } => {
                 self.lvalue(id, target);
                 self.expression(id, value);
