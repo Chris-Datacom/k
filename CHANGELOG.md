@@ -2,7 +2,7 @@
 
 All notable changes to K will be recorded here. The project is pre-1.0, so syntax and compiler behavior may change between releases.
 
-## Unreleased
+## 0.1.0 - 2026-09-17
 
 - Added the Rust compiler workspace.
 - Added a source-spanned lexer and token dump command.
@@ -17,8 +17,14 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
   and unreachable basic-block pruning.
 - Added `void` returns, zero-terminated string literals, static string data,
   and pointee-size-aware pointer indexing.
-- Added language, architecture, contribution, and self-hosting documentation.
-## Unreleased
-
+- Added named structs, deterministic field layouts, and field load/store
+  lowering.
 - Added the first K-written lexer component with caller-owned `Token` records.
 - Added a Rust pipeline test that compiles `compiler/lexer.k`.
+- Added language, architecture, contribution, and self-hosting documentation.
+
+## Unreleased
+
+The next milestone will expand the K-written lexer from single source-unit
+classification to complete identifier and integer token spans, then compare
+its output against the Rust reference lexer.
