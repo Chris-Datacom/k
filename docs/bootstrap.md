@@ -27,7 +27,8 @@ The host boundary is now explicit: compiler stages accept source buffers
 through `driver::compile_source`, while the command-line `compile` command
 only reads UTF-8 source bytes and writes the resulting assembly artifact.
 
-The first K-written component is [`compiler/lexer.k`](../compiler/lexer.k).
+The first K-written components are [`compiler/lexer.k`](../compiler/lexer.k)
+and [`compiler/parser.k`](../compiler/parser.k).
 It uses caller-owned `char*` input and a `struct Token*` output record, with
 no allocation or runtime dependency. It emits complete spans for identifiers,
 decimal integer literals, keywords, and basic punctuation while skipping
@@ -69,6 +70,14 @@ invalid operators, type mismatches, unsupported callee forms, unknown
 signatures, arity mismatches, return mismatches, assignment mismatches, and
 non-boolean conditions.
 
+The first typed IR boundary is also implemented in `compiler/parser.k`.
+`IrStorage` owns fixed-capacity instruction, function, and basic-block arrays.
+The lowering stage emits typed stack-oriented records for constants, names,
+unary and binary expressions, calls, declarations, assignments, returns, and
+expression statements. Nested blocks, `if`, and `while` emit explicit branch
+and jump records. Target-specific code generation remains separate, and
+unsupported statement kinds fail explicitly.
+
 The complete staged plan, including the semantic checker, IR, backend, driver,
 and reproducibility gates, is documented in
 [`docs/self-hosting.md`](self-hosting.md).
@@ -88,6 +97,10 @@ int next_token(struct Lexer* lexer, struct Token* out);
 
 The parser can own the `Lexer` storage and advance it without allocations;
 each call writes one `Token` record and returns its kind.
+
+`parser.k` now builds caller-owned AST, expression, statement, semantic, and
+initial typed-IR records. It is checked by the Rust host and listed in
+`compiler/sources.txt`, making the frontend source set reproducible.
 
 [`compiler/hello.k`](../compiler/hello.k) is the first executable K smoke
 test. It calls the freestanding Linux `print` intrinsic, which lowers to the

@@ -28,10 +28,16 @@ broken K bootstrap can be recovered without circular dependencies.
   assignment compatibility, condition validation, and caller-owned function
   and struct signature tables for calls and field access. Calls retain a
   caller-owned linked argument arena and validate every argument's type.
+  The initial typed IR boundary adds caller-owned instruction and function
+  ranges, lowering constants, names, unary/binary expressions, calls, lets,
+  assignments, returns, and expression statements with explicit capacity
+  errors. Basic-block storage now lowers nested blocks, `if`, and `while`
+  into explicit branch and jump records.
 - `hello.k`: executable smoke test using the freestanding Linux `print`
   intrinsic.
 - `sources.txt`: deterministic list of K compiler sources checked by the
-  bootstrap scripts.
+  bootstrap scripts. It includes the lexer, parser, and hello-world smoke
+  test.
 
 From the repository root, run `scripts/bootstrap.sh` on Linux or
 `scripts/bootstrap.ps1` on Windows with WSL. `scripts/check-bootstrap.sh`

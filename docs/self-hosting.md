@@ -42,6 +42,11 @@ collects caller-owned function and struct field signatures. Calls validate
 known callees, arity, and every argument type through a caller-owned linked
 argument-list arena.
 
+The first backend slice is now present as caller-owned typed IR lowering.
+`IrStorage` records typed instructions, function ranges, and basic-block
+ranges. Nested blocks, `if`, and `while` lower to explicit branch and jump
+records; target-specific assembly remains a separate stage.
+
 The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the
 same token boundaries.
@@ -50,7 +55,7 @@ same token boundaries.
 
 Add the remaining compiler pipeline in small deterministic boundaries:
 
-1. typed AST to K IR lowering
+1. typed AST to K IR lowering, including basic blocks and control flow
 2. IR validation
 3. x86-64 System V code generation
 4. assembly and object-file driver

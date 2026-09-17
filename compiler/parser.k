@@ -2479,3 +2479,595 @@ int parse_program(struct Parser* parser) {
 int parse_example(struct Parser* parser) {
     return parse_program(parser);
 }
+
+struct IrInstruction {
+    int kind;
+    int operator;
+    int type_kind;
+    int start;
+    int end;
+    int left;
+    int right;
+    int extra;
+}
+
+struct IrFunction {
+    int start;
+    int count;
+    int return_type;
+    int parameter_start;
+    int parameter_count;
+    int block_start;
+    int block_count;
+}
+
+struct IrBlock {
+    int start;
+    int count;
+    int id;
+}
+
+struct IrProgram {
+    int function_start;
+    int function_count;
+}
+
+struct IrStorage {
+    struct IrInstruction* instructions;
+    int instruction_capacity;
+    int instruction_count;
+    struct IrFunction* functions;
+    int function_capacity;
+    int function_count;
+    struct IrBlock* blocks;
+    int block_capacity;
+    int block_count;
+    int current_block;
+    int error;
+}
+
+int ir_init(
+    struct IrStorage* ir,
+    struct IrInstruction* instructions,
+    int instruction_capacity,
+    struct IrFunction* functions,
+    int function_capacity
+) {
+    ir.instructions = instructions;
+    ir.instruction_capacity = instruction_capacity;
+    ir.instruction_count = 0;
+    ir.functions = functions;
+    ir.function_capacity = function_capacity;
+    ir.function_count = 0;
+    ir.block_capacity = 0;
+    ir.block_count = 0;
+    ir.current_block = -1;
+    ir.error = 0;
+    return 1;
+}
+
+int ir_block_storage(
+    struct IrStorage* ir,
+    struct IrBlock* blocks,
+    int block_capacity
+) {
+    ir.blocks = blocks;
+    ir.block_capacity = block_capacity;
+    ir.block_count = 0;
+    ir.current_block = -1;
+    return 1;
+}
+
+int ir_block_new(struct IrStorage* ir) {
+    if (ir.block_count >= ir.block_capacity) {
+        ir.error = 7;
+        return -1;
+    }
+    let id = ir.block_count;
+    ir.blocks[id].start = -1;
+    ir.blocks[id].count = 0;
+    ir.blocks[id].id = id;
+    ir.block_count = ir.block_count + 1;
+    return id;
+}
+
+int ir_block_enter(struct IrStorage* ir, int block) {
+    if (block < 0) {
+        ir.error = 2;
+        return 0;
+    }
+    if (block >= ir.block_count) {
+        ir.error = 2;
+        return 0;
+    }
+    ir.current_block = block;
+    if (ir.blocks[block].start < 0) {
+        ir.blocks[block].start = ir.instruction_count;
+    }
+    return 1;
+}
+
+int ir_block_terminated(struct IrStorage* ir) {
+    if (ir.current_block < 0) {
+        return 1;
+    }
+    if (ir.blocks[ir.current_block].count == 0) {
+        return 0;
+    }
+    let last = ir.blocks[ir.current_block].start +
+        ir.blocks[ir.current_block].count - 1;
+    let kind = ir.instructions[last].kind;
+    if (kind == 11) {
+        return 1;
+    }
+    if (kind == 12) {
+        return 1;
+    }
+    if (kind == 13) {
+        return 1;
+    }
+    return 0;
+}
+
+int ir_instruction_init(
+    struct IrInstruction* instruction,
+    int kind,
+    int operator,
+    int type_kind,
+    int left,
+    int right
+) {
+    instruction.kind = kind;
+    instruction.operator = operator;
+    instruction.type_kind = type_kind;
+    instruction.start = 0;
+    instruction.end = 0;
+    instruction.left = left;
+    instruction.right = right;
+    instruction.extra = 0;
+    return 1;
+}
+
+int ir_emit(
+    struct IrStorage* ir,
+    struct IrInstruction* instruction
+) {
+    if (ir.instruction_count >= ir.instruction_capacity) {
+        ir.error = 1;
+        return -1;
+    }
+    let index = ir.instruction_count;
+    ir.instructions[index].kind = instruction.kind;
+    ir.instructions[index].operator = instruction.operator;
+    ir.instructions[index].type_kind = instruction.type_kind;
+    ir.instructions[index].start = instruction.start;
+    ir.instructions[index].end = instruction.end;
+    ir.instructions[index].left = instruction.left;
+    ir.instructions[index].right = instruction.right;
+    ir.instructions[index].extra = instruction.extra;
+    ir.instruction_count = ir.instruction_count + 1;
+    if (ir.current_block >= 0) {
+        ir.blocks[ir.current_block].count =
+            ir.blocks[ir.current_block].count + 1;
+    }
+    return index;
+}
+
+int ir_emit_node(
+    struct IrStorage* ir,
+    int kind,
+    int operator,
+    int type_kind,
+    int left,
+    int right
+) {
+    if (ir.instruction_count >= ir.instruction_capacity) {
+        ir.error = 1;
+        return -1;
+    }
+    let index = ir.instruction_count;
+    ir.instructions[index].kind = kind;
+    ir.instructions[index].operator = operator;
+    ir.instructions[index].type_kind = type_kind;
+    ir.instructions[index].start = 0;
+    ir.instructions[index].end = 0;
+    ir.instructions[index].left = left;
+    ir.instructions[index].right = right;
+    ir.instructions[index].extra = 0;
+    ir.instruction_count = ir.instruction_count + 1;
+    if (ir.current_block >= 0) {
+        ir.blocks[ir.current_block].count =
+            ir.blocks[ir.current_block].count + 1;
+    }
+    return index;
+}
+
+int ir_emit_call(
+    struct IrStorage* ir,
+    int type_kind,
+    int callee,
+    int argument_count
+) {
+    let index = ir_emit_node(ir, 7, 0, type_kind, callee, 0);
+    if (index >= 0) {
+        ir.instructions[index].extra = argument_count;
+    }
+    return index;
+}
+
+int ir_emit_jump(struct IrStorage* ir, int target) {
+    return ir_emit_node(ir, 13, 0, 0, target, 0);
+}
+
+int ir_emit_branch(struct IrStorage* ir, int then_block, int else_block) {
+    return ir_emit_node(ir, 12, 0, 6, then_block, else_block);
+}
+
+int ir_lower_expression(
+    struct IrStorage* ir,
+    struct SemanticChecker* checker,
+    struct ExpressionArena* expressions,
+    int root
+) {
+    if (root < 0) {
+        ir.error = 2;
+        return -1;
+    }
+    if (root >= expressions.count) {
+        ir.error = 2;
+        return -1;
+    }
+    let node = &expressions.nodes[root];
+    if (node.kind == 1) {
+        return ir_emit_node(ir, 3, 0, semantic_expression_type(checker, expressions, root), 0, 0);
+    }
+    if (node.kind == 2) {
+        return ir_emit_node(ir, 1, 0, 1, 0, 0);
+    }
+    if (node.kind == 3) {
+        return ir_emit_node(ir, 2, 0, 6, 0, 0);
+    }
+    if (node.kind == 4) {
+        if (ir_lower_expression(ir, checker, expressions, node.left) < 0) {
+            return -1;
+        }
+        return ir_emit_node(ir, 5, node.operator, semantic_expression_type(checker, expressions, root), node.left, 0);
+    }
+    if (node.kind == 5) {
+        if (ir_lower_expression(ir, checker, expressions, node.left) < 0) {
+            return -1;
+        }
+        if (ir_lower_expression(ir, checker, expressions, node.right) < 0) {
+            return -1;
+        }
+        return ir_emit_node(ir, 6, node.operator, semantic_expression_type(checker, expressions, root), node.left, node.right);
+    }
+    if (node.kind == 6) {
+        if (ir_lower_expression(ir, checker, expressions, node.left) < 0) {
+            return -1;
+        }
+        let argument_index = node.extra_end;
+        let argument_position = 0;
+        while (argument_position < node.extra) {
+            if (argument_index < 0) {
+                ir.error = 2;
+                return -1;
+            }
+            if (argument_index >= expressions.argument_count) {
+                ir.error = 2;
+                return -1;
+            }
+            if (ir_lower_expression(
+                ir,
+                checker,
+                expressions,
+                expressions.arguments[argument_index].expression
+            ) < 0) {
+                return -1;
+            }
+            argument_index = expressions.arguments[argument_index].next;
+            argument_position = argument_position + 1;
+        }
+        if (argument_index >= 0) {
+            ir.error = 2;
+            return -1;
+        }
+        return ir_emit_call(ir, semantic_expression_type(checker, expressions, root), node.left, node.extra);
+    }
+    ir.error = 3;
+    return -1;
+}
+
+int ir_lower_statement_range(
+    struct IrStorage* ir,
+    struct SemanticChecker* checker,
+    struct StatementArena* statements,
+    int start,
+    int count
+) {
+    if (start < 0) {
+        ir.error = 2;
+        return 0;
+    }
+    let index = start;
+    let end = start + count;
+    while (index < end) {
+        if (index >= statements.count) {
+            ir.error = 2;
+            return 0;
+        }
+        let statement = &statements.nodes[index];
+        if (statement.kind == 1) {
+            if (ir_lower_expression(
+                ir,
+                checker,
+                checker.expression_arena,
+                statement.right
+            ) < 0) {
+                return 0;
+            }
+            if (ir_emit_node(ir, 8, 0, 0, statement.left, statement.right) < 0) {
+                return 0;
+            }
+        } else {
+            if (statement.kind == 2) {
+                if (statement.left >= 0) {
+                    if (ir_lower_expression(
+                        ir,
+                        checker,
+                        checker.expression_arena,
+                        statement.left
+                    ) < 0) {
+                        return 0;
+                    }
+                }
+                let has_value = 0;
+                if (statement.left >= 0) {
+                    has_value = 1;
+                }
+                let result = ir_emit_node(
+                    ir,
+                    11,
+                    0,
+                    checker.return_type,
+                    statement.left,
+                    0
+                );
+                if (result < 0) {
+                    if (has_value == 1) {
+                        ir.error = 2;
+                    }
+                    return 0;
+                }
+                ir.instructions[result].extra = has_value;
+            } else {
+                if (statement.kind == 3) {
+                    if (ir_lower_expression(
+                        ir,
+                        checker,
+                        checker.expression_arena,
+                        statement.right
+                    ) < 0) {
+                        return 0;
+                    }
+                    if (ir_emit_node(ir, 9, 0, 0, statement.left, statement.right) < 0) {
+                        return 0;
+                    }
+                } else {
+                    if (statement.kind == 4) {
+                        if (ir_lower_expression(
+                            ir,
+                            checker,
+                            checker.expression_arena,
+                            statement.left
+                        ) < 0) {
+                            return 0;
+                        }
+                        if (ir_emit_node(ir, 10, 0, 0, statement.left, 0) < 0) {
+                            return 0;
+                        }
+                    } else {
+                        if (statement.kind == 5) {
+                            if (ir_lower_statement_range(
+                                ir,
+                                checker,
+                                statements,
+                                statement.body_start,
+                                statement.body_count
+                            ) == 0) {
+                                return 0;
+                            }
+                        } else {
+                            if (statement.kind == 6) {
+                                let then_block = ir_block_new(ir);
+                                let else_block = ir_block_new(ir);
+                                let end_block = ir_block_new(ir);
+                                if (then_block < 0) {
+                                    return 0;
+                                }
+                                if (else_block < 0) {
+                                    return 0;
+                                }
+                                if (end_block < 0) {
+                                    return 0;
+                                }
+                                if (ir_lower_expression(
+                                    ir,
+                                    checker,
+                                    checker.expression_arena,
+                                    statement.left
+                                ) < 0) {
+                                    return 0;
+                                }
+                                if (ir_emit_branch(ir, then_block, else_block) < 0) {
+                                    return 0;
+                                }
+                                if (ir_block_enter(ir, then_block) == 0) {
+                                    return 0;
+                                }
+                                if (ir_lower_statement_range(
+                                    ir,
+                                    checker,
+                                    statements,
+                                    statement.body_start,
+                                    statement.body_count
+                                ) == 0) {
+                                    return 0;
+                                }
+                                if (ir_block_terminated(ir) == 0) {
+                                    if (ir_emit_jump(ir, end_block) < 0) {
+                                        return 0;
+                                    }
+                                }
+                                if (ir_block_enter(ir, else_block) == 0) {
+                                    return 0;
+                                }
+                                if (statement.else_count > 0) {
+                                    if (ir_lower_statement_range(
+                                        ir,
+                                        checker,
+                                        statements,
+                                        statement.else_start,
+                                        statement.else_count
+                                    ) == 0) {
+                                        return 0;
+                                    }
+                                }
+                                if (ir_block_terminated(ir) == 0) {
+                                    if (ir_emit_jump(ir, end_block) < 0) {
+                                        return 0;
+                                    }
+                                }
+                                if (ir_block_enter(ir, end_block) == 0) {
+                                    return 0;
+                                }
+                            } else {
+                                if (statement.kind == 7) {
+                                    let condition_block = ir_block_new(ir);
+                                    let body_block = ir_block_new(ir);
+                                    let end_block = ir_block_new(ir);
+                                    if (condition_block < 0) {
+                                        return 0;
+                                    }
+                                    if (body_block < 0) {
+                                        return 0;
+                                    }
+                                    if (end_block < 0) {
+                                        return 0;
+                                    }
+                                    if (ir_emit_jump(ir, condition_block) < 0) {
+                                        return 0;
+                                    }
+                                    if (ir_block_enter(ir, condition_block) == 0) {
+                                        return 0;
+                                    }
+                                    if (ir_lower_expression(
+                                        ir,
+                                        checker,
+                                        checker.expression_arena,
+                                        statement.left
+                                    ) < 0) {
+                                        return 0;
+                                    }
+                                    if (ir_emit_branch(ir, body_block, end_block) < 0) {
+                                        return 0;
+                                    }
+                                    if (ir_block_enter(ir, body_block) == 0) {
+                                        return 0;
+                                    }
+                                    if (ir_lower_statement_range(
+                                        ir,
+                                        checker,
+                                        statements,
+                                        statement.body_start,
+                                        statement.body_count
+                                    ) == 0) {
+                                        return 0;
+                                    }
+                                    if (ir_block_terminated(ir) == 0) {
+                                        if (ir_emit_jump(ir, condition_block) < 0) {
+                                            return 0;
+                                        }
+                                    }
+                                    if (ir_block_enter(ir, end_block) == 0) {
+                                        return 0;
+                                    }
+                                } else {
+                                    ir.error = 4;
+                                    return 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return 1;
+}
+
+int ir_lower_program(
+    struct IrStorage* ir,
+    struct SemanticChecker* checker,
+    struct AstProgram* program,
+    struct AstStorage* storage
+) {
+    ir.function_count = 0;
+    let function_index = 0;
+    while (function_index < program.function_count) {
+        if (ir.function_count >= ir.function_capacity) {
+            ir.error = 5;
+            return 0;
+        }
+        let function = &storage.functions[function_index];
+        checker.scope = function_index + 1;
+        checker.symbol_count = 0;
+        checker.return_type = function.return_type;
+        let parameter_index = 0;
+        while (parameter_index < function.parameter_count) {
+            let parameter = &storage.parameters[function.parameter_start + parameter_index];
+            if (semantic_declare(
+                checker,
+                parameter.name_start,
+                parameter.name_end,
+                2,
+                parameter.type_kind
+            ) == 0) {
+                ir.error = 6;
+                return 0;
+            }
+            parameter_index = parameter_index + 1;
+        }
+        let output = &ir.functions[ir.function_count];
+        output.start = ir.instruction_count;
+        output.count = 0;
+        output.return_type = function.return_type;
+        output.parameter_start = function.parameter_start;
+        output.parameter_count = function.parameter_count;
+        ir.block_count = 0;
+        ir.current_block = -1;
+        let entry_block = ir_block_new(ir);
+        if (entry_block < 0) {
+            return 0;
+        }
+        if (ir_block_enter(ir, entry_block) == 0) {
+            return 0;
+        }
+        output.block_start = entry_block;
+        if (ir_lower_statement_range(
+            ir,
+            checker,
+            checker.statement_arena,
+            function.body_start,
+            function.body_count
+        ) == 0) {
+            return 0;
+        }
+        output.count = ir.instruction_count - output.start;
+        output.block_count = ir.block_count;
+        ir.function_count = ir.function_count + 1;
+        function_index = function_index + 1;
+    }
+    return 1;
+}

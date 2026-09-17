@@ -85,6 +85,12 @@ mod tests {
         assert!(assembly.contains(".globl semantic_collect_signatures"));
         assert!(assembly.contains(".globl semantic_function_index"));
         assert!(assembly.contains(".globl semantic_field_type"));
+        assert!(assembly.contains(".globl ir_init"));
+        assert!(assembly.contains(".globl ir_lower_expression"));
+        assert!(assembly.contains(".globl ir_lower_program"));
+        assert!(assembly.contains(".globl ir_block_storage"));
+        assert!(assembly.contains(".globl ir_block_new"));
+        assert!(assembly.contains(".globl ir_emit_branch"));
     }
 
     #[test]

@@ -1,3 +1,4 @@
 compiler/lexer.k
 compiler/parser.k
+compiler/parser.k
 compiler/hello.k
