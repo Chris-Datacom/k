@@ -2,7 +2,7 @@
 
 K is a small, low-level programming language inspired by C and implemented in Rust. The project is intended to become self-compiling: eventually, the K compiler will be rebuilt in K and compiled by an earlier K compiler.
 
-This repository is at **stage 1**. The Rust implementation can lex, parse, check,
+This repository is at **stage 2 bootstrap**. The Rust implementation can lex, parse, check,
 and emit x86-64 assembly for a small, intentionally conservative subset of K.
 The backend is freestanding-friendly assembly: it does not link a runtime or
 depend on libc, but it currently targets the System V calling convention.
@@ -38,6 +38,9 @@ k compile <input.k> <output.s>
 - Bootstrapping in small, auditable stages rather than a one-shot rewrite.
 
 The syntax and guarantees are provisional until marked stable. See [the language notes](docs/language.md) and [the bootstrap plan](docs/bootstrap.md).
+
+Rust is currently a temporary bootstrap and recovery compiler. The project
+will remove it only after two reproducible releases have been built by K.
 
 ## Repository map
 

@@ -2,9 +2,12 @@
 
 Self-compilation is a sequence of working compilers, not a flag that can be switched on at the end. Each stage must be able to build the next stage and must have a reproducible artifact or hash.
 
-## Stage 0: Rust host
+## Stage 0: Rust host (temporary)
 
 The Rust compiler implements lexing, parsing, semantic analysis, and code generation. The compiler library should avoid depending on the command-line layer so it can later be translated into K.
+Rust is retained as a recovery compiler until two reproducible releases have
+been built by K itself. This prevents a broken bootstrap from making the
+language unrecoverable.
 
 ## Stage 1: Useful native compiler
 
@@ -50,9 +53,19 @@ that calls `main` and exits with its integer return value.
 
 Compile the K compiler source with the Rust host compiler, then use that resulting K compiler to compile itself. The two outputs must agree on a defined set of source programs. This is the first self-hosting milestone.
 
-## Stage 4: Reduce the host dependency
+## Stage 4: Reproducible K bootstrap
 
-Move target-specific code into a small, documented backend boundary. Keep a Rust bootstrap compiler for recovery, but make normal K development use the self-hosted compiler. Reproducible build scripts should record compiler version, target, and input hashes.
+Build the complete compiler with the K compiler, then build it again with the
+resulting compiler. Compare source manifests, generated assembly, and
+executable behavior. Repeat this process for two tagged releases. Both
+releases must pass the same language and compiler conformance suite.
+
+## Stage 5: Remove the Rust implementation
+
+After two reproducible K-built releases, move target-specific code into a
+small documented backend boundary and remove the Rust implementation from the
+normal workspace. Preserve a separately archived recovery compiler until the
+K toolchain has an independent release process.
 
 ## Invariants for every stage
 
