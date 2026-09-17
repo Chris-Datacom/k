@@ -833,6 +833,14 @@ int expression_primary(
         parser_advance(parser);
         return expression_arena_add(arena, 2, 0, start, end, -1);
     }
+    if (token_kind == 14) {
+        parser_advance(parser);
+        return expression_arena_add(arena, 9, 0, start, end, -1);
+    }
+    if (token_kind == 15) {
+        parser_advance(parser);
+        return expression_arena_add(arena, 10, 0, start, end, -1);
+    }
     if (token_kind == 9) {
         parser_advance(parser);
         let boolean = expression_arena_add(arena, 3, 0, start, end, -1);
@@ -2166,6 +2174,12 @@ int semantic_expression_type(
     if (node.kind == 2) {
         return 1;
     }
+    if (node.kind == 9) {
+        return 2;
+    }
+    if (node.kind == 10) {
+        return 4;
+    }
     if (node.kind == 3) {
         return 6;
     }
@@ -2327,6 +2341,12 @@ int semantic_expression(
         return semantic_resolve(checker, node.start, node.end);
     }
     if (node.kind == 2) {
+        return 1;
+    }
+    if (node.kind == 9) {
+        return 1;
+    }
+    if (node.kind == 10) {
         return 1;
     }
     if (node.kind == 3) {
