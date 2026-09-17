@@ -108,6 +108,7 @@ mod tests {
         let assembly = compile_source(&combined).expect("K lexer conformance harness should compile");
         assert!(assembly.contains(".globl lex_one"));
         assert!(assembly.contains(".globl lexer_conformance"));
+        assert!(assembly.contains(".globl main"));
     }
 
     #[test]

@@ -64,3 +64,9 @@ int lexer_conformance(char* source, struct Token* token) {
     if (position < 0) { return 1; }
     return 0;
 }
+
+int main() {
+    let source = "let x = 42; // c\nif (x != 0) { x = x <= 10; }";
+    struct Token token;
+    return lexer_conformance(source, &token);
+}
