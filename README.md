@@ -71,4 +71,5 @@ will remove it only after two reproducible releases have been built by K.
 - `.gitattributes`: GitHub Linguist language classification for `.k` files.
 - `docs/language.md`: current language contract and open decisions.
 - `docs/bootstrap.md`: route from Rust implementation to self-hosting.
+- `scripts/`: reproducible bootstrap and source-manifest checks.
 - `examples/hello.k`: a tiny source fixture used by the documentation.

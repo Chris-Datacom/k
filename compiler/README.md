@@ -15,6 +15,13 @@ broken K bootstrap can be recovered without circular dependencies.
 - `lexer.k`: allocation-free source scanning into caller-owned `Token` records.
 - `hello.k`: executable smoke test using the freestanding Linux `print`
   intrinsic.
+- `sources.txt`: deterministic list of K compiler sources checked by the
+  bootstrap scripts.
+
+From the repository root, run `scripts/bootstrap.sh` on Linux or
+`scripts/bootstrap.ps1` on Windows with WSL. `scripts/check-bootstrap.sh`
+checks every source in the manifest and runs the Rust reference tests.
+Windows users can run the equivalent `scripts/check-bootstrap.ps1`.
 
 ## Required path to self-hosting
 

@@ -49,6 +49,18 @@ and inspect the generated assembly, but cannot execute this Linux syscall
 output natively. Programs defining `main` receive a minimal `_start` wrapper
 that calls `main` and exits with its integer return value.
 
+The repository now includes repeatable bootstrap setup:
+
+```text
+scripts/bootstrap.sh       # Linux/WSL: test, compile, assemble, link, run
+scripts/bootstrap.ps1      # Windows: test, compile, and use WSL when present
+scripts/check-bootstrap.sh # check every source listed in compiler/sources.txt
+scripts/check-bootstrap.ps1 # Windows equivalent of the manifest check
+```
+
+The source manifest is deliberately explicit so future K-built stages can
+reproduce the exact compiler input set.
+
 ## Stage 3: K builds K
 
 Compile the K compiler source with the Rust host compiler, then use that resulting K compiler to compile itself. The two outputs must agree on a defined set of source programs. This is the first self-hosting milestone.
