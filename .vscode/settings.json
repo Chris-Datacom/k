@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^powershell -NoProfile -ExecutionPolicy Bypass -File \\.\\\\scripts\\\\check-bootstrap\\.ps1; git diff --check; git status --short$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
