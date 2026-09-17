@@ -26,5 +26,5 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
 ## Unreleased
 
 The next milestone will expand the K-written lexer from single source-unit
-classification to complete identifier and integer token spans, then compare
-its output against the Rust reference lexer.
+classification to keyword and comment recognition, then compare its output
+against the Rust reference lexer.

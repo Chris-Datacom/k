@@ -1,8 +1,4 @@
-// First self-hosting lexer milestone.
-//
-// The caller owns the source buffer and output token. No allocation or
-// runtime support is required. This scanner emits one source unit at a time;
-// the next milestone will add token-span loops and keyword recognition.
+// Allocation-free source scanner used as the first self-hosting component.
 
 struct Token {
     int kind;
@@ -12,8 +8,8 @@ struct Token {
 
 // Token kinds:
 // 0 = end of input
-// 1 = identifier character
-// 2 = decimal digit
+// 1 = identifier
+// 2 = decimal integer
 // 3 = punctuation or operator
 // 4 = whitespace
 // -1 = invalid input
@@ -48,26 +44,81 @@ int lex_one(char* source, int length, int position, struct Token* out) {
 
     if (current >= '0') {
         if (current <= '9') {
+            let next = position + 1;
+            let scanning = true;
+            while (scanning) {
+                if (next < length) {
+                    let digit = source[next];
+                    if (digit >= '0') {
+                        if (digit <= '9') {
+                            next = next + 1;
+                        } else {
+                            scanning = false;
+                        }
+                    } else {
+                        scanning = false;
+                    }
+                } else {
+                    scanning = false;
+                }
+            }
             out.kind = 2;
-            return position + 1;
+            out.end = next;
+            return next;
         }
     }
 
+    let identifier_start = false;
     if (current == '_') {
-        out.kind = 1;
-        return position + 1;
+        identifier_start = true;
     }
     if (current >= 'a') {
         if (current <= 'z') {
-            out.kind = 1;
-            return position + 1;
+            identifier_start = true;
         }
     }
     if (current >= 'A') {
         if (current <= 'Z') {
-            out.kind = 1;
-            return position + 1;
+            identifier_start = true;
         }
+    }
+    if (identifier_start) {
+        let next = position + 1;
+        let scanning = true;
+        while (scanning) {
+            if (next < length) {
+                let character = source[next];
+                let identifier_part = false;
+                if (character == '_') {
+                    identifier_part = true;
+                }
+                if (character >= 'a') {
+                    if (character <= 'z') {
+                        identifier_part = true;
+                    }
+                }
+                if (character >= 'A') {
+                    if (character <= 'Z') {
+                        identifier_part = true;
+                    }
+                }
+                if (character >= '0') {
+                    if (character <= '9') {
+                        identifier_part = true;
+                    }
+                }
+                if (identifier_part) {
+                    next = next + 1;
+                } else {
+                    scanning = false;
+                }
+            } else {
+                scanning = false;
+            }
+        }
+        out.kind = 1;
+        out.end = next;
+        return next;
     }
 
     if (current == '+') {

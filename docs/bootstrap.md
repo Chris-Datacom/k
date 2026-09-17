@@ -26,11 +26,11 @@ only reads UTF-8 source bytes and writes the resulting assembly artifact.
 
 The first K-written component is [`compiler/lexer.k`](../compiler/lexer.k).
 It uses caller-owned `char*` input and a `struct Token*` output record, with
-no allocation or runtime dependency. The initial version emits one source
-unit at a time for whitespace, identifier characters, decimal digits, and
-basic punctuation. The Rust test suite compiles it through the normal
-pipeline, making it a checked bootstrap artifact while the K implementation
-grows toward complete token-span scanning.
+no allocation or runtime dependency. It emits complete spans for whitespace,
+identifiers, decimal integer literals, and basic punctuation. The Rust test
+suite compiles it through the normal pipeline, making it a checked bootstrap
+artifact while the K implementation grows toward keyword and comment
+recognition.
 
 ## Stage 3: K builds K
 

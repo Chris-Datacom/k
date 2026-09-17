@@ -316,8 +316,8 @@ fn prune_unreachable_blocks(function: &mut IrFunction) {
             continue;
         }
         reachable[id] = true;
-        if let Some(last) = function.blocks[id].instructions.last() {
-            match last {
+        for instruction in &function.blocks[id].instructions {
+            match instruction {
                 Instruction::Branch {
                     then_block,
                     else_block,
@@ -326,13 +326,16 @@ fn prune_unreachable_blocks(function: &mut IrFunction) {
                     pending.push_back(*else_block);
                 }
                 Instruction::Jump { target } => pending.push_back(*target),
-                Instruction::Return { .. } => {}
-                _ => {
-                    if id + 1 < function.blocks.len() {
-                        pending.push_back(id + 1);
-                    }
-                }
+                _ => {}
             }
+        }
+        if function.blocks[id]
+            .instructions
+            .last()
+            .is_some_and(|instruction| !matches!(instruction, Instruction::Branch { .. } | Instruction::Jump { .. } | Instruction::Return { .. }))
+            && id + 1 < function.blocks.len()
+        {
+            pending.push_back(id + 1);
         }
     }
 

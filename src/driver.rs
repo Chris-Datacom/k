@@ -59,5 +59,6 @@ mod tests {
         let assembly = compile_source(source).expect("bootstrap lexer should compile");
         assert!(assembly.contains(".globl lex_one"));
         assert!(assembly.contains("add rax, 8"));
+        assert!(assembly.contains("mov QWORD PTR [rdi], rax"));
     }
 }

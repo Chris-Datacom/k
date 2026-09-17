@@ -60,8 +60,8 @@ The syntax and guarantees are provisional until marked stable. See [the language
   `k compile` is the host file-to-artifact interface.
 - `src/lib.rs`: compiler-library boundary and future pipeline stages.
 - `src/main.rs`: host-side command-line interface.
-- `compiler/lexer.k`: first K-written compiler component, currently a
-  caller-owned-buffer token scanner.
+- `compiler/lexer.k`: first K-written compiler component, with complete
+  identifier and decimal-integer spans in a caller-owned-buffer scanner.
 - `docs/language.md`: current language contract and open decisions.
 - `docs/bootstrap.md`: route from Rust implementation to self-hosting.
 - `examples/hello.k`: a tiny source fixture used by the documentation.
