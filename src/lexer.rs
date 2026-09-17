@@ -33,6 +33,7 @@ pub struct SpannedToken {
 pub enum TokenKind {
     Identifier(String),
     Integer(String),
+    Character(u8),
     Int,
     Char,
     If,
@@ -60,6 +61,8 @@ pub enum TokenKind {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Eof,
 }
 
@@ -85,6 +88,7 @@ impl fmt::Display for TokenKind {
         match self {
             Self::Identifier(value) => write!(formatter, "identifier({value})"),
             Self::Integer(value) => write!(formatter, "integer({value})"),
+            Self::Character(value) => write!(formatter, "character({value})"),
             Self::Int => write!(formatter, "int"),
             Self::Char => write!(formatter, "char"),
             Self::If => write!(formatter, "if"),
@@ -112,6 +116,8 @@ impl fmt::Display for TokenKind {
             Self::RightParen => write!(formatter, ")"),
             Self::LeftBrace => write!(formatter, "{{"),
             Self::RightBrace => write!(formatter, "}}"),
+            Self::LeftBracket => write!(formatter, "["),
+            Self::RightBracket => write!(formatter, "]"),
             Self::Eof => write!(formatter, "eof"),
         }
     }
@@ -197,6 +203,49 @@ impl<'source> Lexer<'source> {
                     String::from_utf8(self.source[start..self.cursor].to_vec()).unwrap(),
                 )
             }
+            b'\'' => {
+                let value = match self.advance() {
+                    Some(b'\\') => match self.advance() {
+                        Some(b'n') => b'\n',
+                        Some(b'r') => b'\r',
+                        Some(b't') => b'\t',
+                        Some(b'\\') => b'\\',
+                        Some(b'\'') => b'\'',
+                        Some(escaped) => {
+                            return Err(LexError {
+                                span: Span { start, end: self.cursor },
+                                message: format!("unknown character escape `\\{escaped}`"),
+                            })
+                        }
+                        None => {
+                            return Err(LexError {
+                                span: Span { start, end: self.cursor },
+                                message: "unterminated character literal".to_owned(),
+                            })
+                        }
+                    },
+                    Some(value @ 0x20..=0x7e) => value,
+                    Some(value) => {
+                        return Err(LexError {
+                            span: Span { start, end: self.cursor },
+                            message: format!("invalid character byte 0x{value:02x}"),
+                        })
+                    }
+                    None => {
+                        return Err(LexError {
+                            span: Span { start, end: self.cursor },
+                            message: "unterminated character literal".to_owned(),
+                        })
+                    }
+                };
+                if self.advance() != Some(b'\'') {
+                    return Err(LexError {
+                        span: Span { start, end: self.cursor },
+                        message: "character literal must contain one character".to_owned(),
+                    });
+                }
+                TokenKind::Character(value)
+            }
             b'+' => TokenKind::Plus,
             b'-' => TokenKind::Minus,
             b'*' => TokenKind::Star,
@@ -227,6 +276,8 @@ impl<'source> Lexer<'source> {
             b')' => TokenKind::RightParen,
             b'{' => TokenKind::LeftBrace,
             b'}' => TokenKind::RightBrace,
+            b'[' => TokenKind::LeftBracket,
+            b']' => TokenKind::RightBracket,
             _ => {
                 return Err(LexError {
                     span: Span {
@@ -303,5 +354,13 @@ mod tests {
     fn reports_unknown_bytes() {
         let error = Lexer::new("@").next().unwrap().unwrap_err();
         assert_eq!(error.span.start, 0);
+    }
+
+    #[test]
+    fn lexes_character_literals_and_escapes() {
+        let tokens: Vec<_> = Lexer::new("'K' '\\n'")
+            .map(|item| item.unwrap().token)
+            .collect();
+        assert_eq!(tokens, vec![TokenKind::Character(b'K'), TokenKind::Character(b'\n'), TokenKind::Eof]);
     }
 }

@@ -5,11 +5,16 @@
 //! reproduce the same boundaries:
 //!
 //! 1. [`lexer`] turns bytes into source-spanned tokens.
-//! 2. A parser will turn tokens into an abstract syntax tree.
-//! 3. Semantic analysis will resolve names and enforce K's type rules.
-//! 4. Code generation will eventually emit a small native executable.
+//! 2. [`parser`] turns tokens into an abstract syntax tree.
+//! 3. [`sema`] resolves names and enforces K's initial type rules.
+//! 4. [`ir`] lowers checked programs into a typed intermediate boundary.
+//! 5. [`codegen`] emits a small native executable.
 //!
-//! The first milestone only implements stage one. Keeping it useful and
-//! testable gives the language a concrete foundation before syntax grows.
+//! The initial milestones keep each stage useful and testable, giving the
+//! language a concrete foundation before syntax and code generation grow.
 
 pub mod lexer;
+pub mod parser;
+pub mod sema;
+pub mod codegen;
+pub mod ir;

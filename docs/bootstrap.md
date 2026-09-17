@@ -8,7 +8,13 @@ The Rust compiler implements lexing, parsing, semantic analysis, and code genera
 
 ## Stage 1: Useful native compiler
 
-Add a parser, typed abstract syntax tree, name resolution, and a small code generator. Start with one target and a tiny runtime. The first useful programs should compile without a garbage collector, package manager, or standard library beyond documented system calls.
+Add a parser, typed abstract syntax tree, name resolution, and a small code
+generator. The current implementation reaches the first part of this stage:
+`k emit` produces x86-64 System V assembly without a runtime or libc. This is
+intentionally suitable as a foundation for a freestanding kernel, although
+boot entry points, memory access, interrupts, and a kernel ABI are not yet
+implemented. The next backend work must define those interfaces rather than
+silently assuming an operating-system process.
 
 ## Stage 2: K compiler written in K
 

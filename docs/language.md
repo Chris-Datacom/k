@@ -16,11 +16,11 @@ K is intended for systems work where representation and cost matter. The languag
 
 Source is UTF-8, but the initial grammar is ASCII. Whitespace is insignificant. A line comment begins with `//` and continues to the end of the line.
 
-Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digits, or `_`. Decimal integer literals contain one or more digits. The first reserved words are `int`, `char`, `if`, `else`, `while`, `return`, `let`, `true`, and `false`.
+Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digits, or `_`. Decimal integer literals contain one or more digits. Character literals use single quotes and support `\\n`, `\\r`, `\\t`, `\\\\`, and `\\'`. The first reserved words are `int`, `char`, `if`, `else`, `while`, `return`, `let`, `true`, and `false`.
 
-The initial operator and punctuation set is `+ - * / = == != < <= > >= & ; , ( ) { }`.
+The initial operator and punctuation set is `+ - * / = == != < <= > >= & ; , ( ) { } [ ]`.
 
-## Proposed core syntax
+## Parsed core syntax
 
 ```k
 int main() {
@@ -29,7 +29,9 @@ int main() {
 }
 ```
 
-This is a direction, not yet a parsed or type-checked program. Before syntax is stabilized, the compiler must answer: declaration forms, function types, arrays, pointer spelling, casts, modules, and whether `let` permits inference everywhere.
+The parser currently accepts function definitions with `int`, `char`, or pointer return types, pointer parameters, braced blocks, `let` declarations, assignments to variables or memory locations, `return`, `if`/`else`, `while`, expression statements, calls, character literals, unary `-`, `&`, and `*`, indexing, and binary arithmetic/comparison operators. Pointer and index operations use machine-word loads and stores in the initial backend; bounds checks are intentionally absent.
+
+The grammar remains provisional. Before syntax is stabilized, the compiler must answer: declaration forms, function types, arrays, pointer spelling, casts, modules, and whether `let` permits inference everywhere.
 
 ## Planned primitive types
 

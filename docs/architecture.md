@@ -19,10 +19,14 @@ The command-line binary in `src/main.rs` handles files, arguments, and human-rea
 ## Planned modules
 
 - `lexer`: converts source bytes into tokens and reports spans.
-- `parser`: validates grammar and creates an untyped syntax tree.
+- `parser`: validates grammar and creates the source-spanned untyped syntax tree in `src/parser.rs`.
 - `sema`: resolves declarations, scopes, types, and invalid operations.
-- `ir`: stores a small target-independent representation.
-- `codegen`: emits assembly or object code for the first supported target.
+- `ir`: lowers checked programs into typed locals, basic blocks, explicit
+  constants, loads/stores, arithmetic, calls, and control-flow instructions;
+  it also performs constant folding and unreachable-block pruning.
+- `codegen`: emits deterministic x86-64 System V assembly for the first
+  supported target. It has no runtime or libc dependency, which is the first
+  step toward a freestanding kernel toolchain.
 - `driver`: coordinates stages and diagnostics without embedding policy in them.
 
 ## Design constraints
