@@ -94,6 +94,13 @@ mod tests {
     }
 
     #[test]
+    fn compiles_the_shared_lexer_conformance_fixture() {
+        let source = include_str!("../compiler/lexer_conformance.k");
+        let assembly = compile_source(source).expect("lexer conformance fixture should compile");
+        assert!(assembly.contains(".globl main"));
+    }
+
+    #[test]
     fn compiles_the_k_hello_world_program() {
         let source = include_str!("../compiler/hello.k");
         let assembly = compile_source(source).expect("hello world should compile");

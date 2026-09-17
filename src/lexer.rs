@@ -412,4 +412,22 @@ mod tests {
             .collect();
         assert_eq!(tokens, vec![TokenKind::StringLiteral(vec![b'K', b'\n']), TokenKind::Eof]);
     }
+
+    #[test]
+    fn lexes_shared_conformance_fixture() {
+        let source = include_str!("../compiler/lexer_conformance.k");
+        let tokens: Vec<_> = Lexer::new(source)
+            .map(|item| item.unwrap())
+            .collect();
+        assert!(matches!(tokens.first().map(|item| &item.token), Some(TokenKind::Struct)));
+        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::StringLiteral(_))));
+        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::Character(b'\''))));
+        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::NotEqual)));
+        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::LessEqual)));
+        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::GreaterEqual)));
+        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::Else)));
+        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::While)));
+        assert!(matches!(tokens.last().map(|item| &item.token), Some(TokenKind::Eof)));
+        assert!(tokens.windows(2).all(|pair| pair[0].span.end <= pair[1].span.start));
+    }
 }
