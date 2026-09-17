@@ -101,6 +101,16 @@ mod tests {
     }
 
     #[test]
+    fn compiles_the_k_lexer_conformance_harness() {
+        let source = include_str!("../compiler/lexer.k");
+        let harness = include_str!("../compiler/lexer_conformance_harness.k");
+        let combined = format!("{source}\n{harness}");
+        let assembly = compile_source(&combined).expect("K lexer conformance harness should compile");
+        assert!(assembly.contains(".globl lex_one"));
+        assert!(assembly.contains(".globl lexer_conformance"));
+    }
+
+    #[test]
     fn compiles_the_k_hello_world_program() {
         let source = include_str!("../compiler/hello.k");
         let assembly = compile_source(source).expect("hello world should compile");

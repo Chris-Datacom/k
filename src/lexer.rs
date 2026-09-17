@@ -419,7 +419,10 @@ mod tests {
         let tokens: Vec<_> = Lexer::new(source)
             .map(|item| item.unwrap())
             .collect();
-        assert!(matches!(tokens.first().map(|item| &item.token), Some(TokenKind::Struct)));
+        assert_eq!(tokens.first().map(|item| &item.token), Some(&TokenKind::Struct));
+        assert_eq!(tokens.first().map(|item| item.span), Some(super::Span { start: 38, end: 44 }));
+        assert_eq!(tokens.get(1).map(|item| &item.token), Some(&TokenKind::Identifier("Pair".into())));
+        assert_eq!(tokens.get(1).map(|item| item.span), Some(super::Span { start: 45, end: 49 }));
         assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::StringLiteral(_))));
         assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::Character(b'\''))));
         assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::NotEqual)));
@@ -427,7 +430,8 @@ mod tests {
         assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::GreaterEqual)));
         assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::Else)));
         assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::While)));
-        assert!(matches!(tokens.last().map(|item| &item.token), Some(TokenKind::Eof)));
+        assert_eq!(tokens.last().map(|item| &item.token), Some(&TokenKind::Eof));
+        assert_eq!(tokens.last().map(|item| item.span), Some(super::Span { start: 415, end: 415 }));
         assert!(tokens.windows(2).all(|pair| pair[0].span.end <= pair[1].span.start));
     }
 }
