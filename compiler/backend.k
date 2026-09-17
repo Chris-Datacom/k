@@ -37,6 +37,15 @@ struct BackendFunction {
     int block_count;
 }
 
+struct BackendProgram {
+    char* scratch;
+    int scratch_capacity;
+    struct BackendInstruction* instructions;
+    int instruction_capacity;
+    struct BackendBlock* blocks;
+    int block_capacity;
+}
+
 int backend_init(
     struct BackendOutput* output,
     char* data,
@@ -307,7 +316,11 @@ int backend_emit_block(
     int instruction_capacity,
     struct BackendBlock* block
 ) {
-    if (block.start < 0 || block.count < 0) {
+    if (block.start < 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (block.count < 0) {
         output.error = 7;
         return 0;
     }
@@ -357,41 +370,44 @@ int backend_emit_block(
 
 int backend_emit_function(
     struct BackendOutput* output,
-    char* scratch,
-    int scratch_capacity,
+    struct BackendProgram* program,
     char* name,
     int name_length,
-    struct BackendInstruction* instructions,
-    int instruction_capacity,
-    struct BackendBlock* blocks,
-    int block_capacity,
     struct BackendFunction* function
 ) {
     if (name_length < 0) {
         output.error = 2;
         return 0;
     }
-    if (function.start < 0 || function.count < 0) {
+    if (function.start < 0) {
         output.error = 7;
         return 0;
     }
-    if (function.start > instruction_capacity) {
+    if (function.count < 0) {
         output.error = 7;
         return 0;
     }
-    if (function.count > instruction_capacity - function.start) {
+    if (function.start > program.instruction_capacity) {
         output.error = 7;
         return 0;
     }
-    if (function.block_start < 0 || function.block_count < 0) {
+    if (function.count > program.instruction_capacity - function.start) {
         output.error = 7;
         return 0;
     }
-    if (function.block_start > block_capacity) {
+    if (function.block_start < 0) {
         output.error = 7;
         return 0;
     }
-    if (function.block_count > block_capacity - function.block_start) {
+    if (function.block_count < 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.block_start > program.block_capacity) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.block_count > program.block_capacity - function.block_start) {
         output.error = 7;
         return 0;
     }
@@ -406,11 +422,11 @@ int backend_emit_function(
     while (block_index < block_end) {
         if (backend_emit_block(
             output,
-            scratch,
-            scratch_capacity,
-            instructions,
-            instruction_capacity,
-            &blocks[block_index]
+            program.scratch,
+            program.scratch_capacity,
+            program.instructions,
+            program.instruction_capacity,
+            &program.blocks[block_index]
         ) == 0) {
             return 0;
         }
