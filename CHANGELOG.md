@@ -18,3 +18,7 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
 - Added `void` returns, zero-terminated string literals, static string data,
   and pointee-size-aware pointer indexing.
 - Added language, architecture, contribution, and self-hosting documentation.
+## Unreleased
+
+- Added the first K-written lexer component with caller-owned `Token` records.
+- Added a Rust pipeline test that compiles `compiler/lexer.k`.

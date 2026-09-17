@@ -24,6 +24,14 @@ The host boundary is now explicit: compiler stages accept source buffers
 through `driver::compile_source`, while the command-line `compile` command
 only reads UTF-8 source bytes and writes the resulting assembly artifact.
 
+The first K-written component is [`compiler/lexer.k`](../compiler/lexer.k).
+It uses caller-owned `char*` input and a `struct Token*` output record, with
+no allocation or runtime dependency. The initial version emits one source
+unit at a time for whitespace, identifier characters, decimal digits, and
+basic punctuation. The Rust test suite compiles it through the normal
+pipeline, making it a checked bootstrap artifact while the K implementation
+grows toward complete token-span scanning.
+
 ## Stage 3: K builds K
 
 Compile the K compiler source with the Rust host compiler, then use that resulting K compiler to compile itself. The two outputs must agree on a defined set of source programs. This is the first self-hosting milestone.

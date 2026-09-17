@@ -52,4 +52,12 @@ mod tests {
         assert!(matches!(error, CompileError::Semantic(_)));
         assert!(error.to_string().contains("undefined name"));
     }
+
+    #[test]
+    fn compiles_the_k_bootstrap_lexer() {
+        let source = include_str!("../compiler/lexer.k");
+        let assembly = compile_source(source).expect("bootstrap lexer should compile");
+        assert!(assembly.contains(".globl lex_one"));
+        assert!(assembly.contains("add rax, 8"));
+    }
 }
