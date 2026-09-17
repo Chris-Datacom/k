@@ -143,6 +143,9 @@ mod tests {
         assert!(assembly.contains(".globl ir_block_new"));
         assert!(assembly.contains(".globl ir_emit_branch"));
         assert!(assembly.contains(".globl ir_validate"));
+        assert!(source.contains("int ir_integer_literal("));
+        assert!(source.contains("if (node.kind == 7)"));
+        assert!(source.contains("ir.instructions[ir.instruction_count - 1].extra = 8"));
     }
 
     #[test]
@@ -184,9 +187,15 @@ mod tests {
         assert!(assembly.contains(".globl backend_integer"));
         assert!(assembly.contains(".globl backend_load_local"));
         assert!(assembly.contains(".globl backend_store_local"));
+        assert!(assembly.contains(".globl backend_address_local"));
+        assert!(assembly.contains(".globl backend_field_address"));
+        assert!(assembly.contains(".globl backend_load"));
+        assert!(assembly.contains(".globl backend_scale"));
+        assert!(assembly.contains(".globl backend_store"));
         assert!(assembly.contains(".globl backend_emit_block"));
         assert!(assembly.contains(".globl backend_emit_function"));
         assert!(source.contains("if (instruction.kind == 1)"));
+        assert!(source.contains("if (instruction.kind == 15)"));
         assert!(source.contains("return backend_constant("));
     }
 }

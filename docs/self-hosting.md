@@ -53,9 +53,13 @@ The first K-written backend slice is in `compiler/backend.k`. It owns a
 caller-provided character buffer and emits deterministic x86-64 assembly
 headers, function labels, prologues, and a return-zero epilogue. Instruction
 selection now dispatches unary negate, arithmetic, and return IR records;
-integer constants, integer formatting, and typed local stack-slot load/store
-emitters are now available. Calls, pointer memory, and control-flow label
-emission remain the next backend work.
+integer constants, integer formatting, typed local stack-slot load/store
+emitters, and the first pointer/memory operations are now available.
+Address-of-local, field address adjustment, indirect loads, scaling, and
+indirect stores use explicit instruction dispatch. Calls and control-flow
+label emission remain the next backend work. The K IR lowering now preserves
+integer literal payloads and lowers pointer indexing into base evaluation,
+element scaling, address addition, and an indirect load.
 
 The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the

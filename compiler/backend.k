@@ -250,6 +250,101 @@ int backend_store_local(
     return backend_text(output, "], rax\n", 7);
 }
 
+int backend_address_local(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int slot
+) {
+    if (slot < 0) {
+        output.error = 6;
+        return 0;
+    }
+    if (backend_text(output, "  lea rax, [rbp-", 16) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, slot) == 0) {
+        return 0;
+    }
+    return backend_text(output, "]\n  push rax\n", 13);
+}
+
+int backend_field_address(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int offset
+) {
+    if (offset < 0) {
+        output.error = 6;
+        return 0;
+    }
+    if (backend_text(output, "  pop rax\n", 10) == 0) {
+        return 0;
+    }
+    if (offset == 0) {
+        return backend_text(output, "  push rax\n", 11);
+    }
+    if (backend_text(output, "  add rax, ", 11) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, offset) == 0) {
+        return 0;
+    }
+    return backend_text(output, "\n  push rax\n", 12);
+}
+
+int backend_load(
+    struct BackendOutput* output,
+    int type_kind
+) {
+    if (backend_text(output, "  pop rax\n  mov ", 16) == 0) {
+        return 0;
+    }
+    if (type_kind == 2) {
+        if (backend_text(output, "zx eax, BYTE PTR [rax]\n  push rax\n", 36) == 0) {
+            return 0;
+        }
+    } else {
+        if (backend_text(output, "rax, QWORD PTR [rax]\n  push rax\n", 32) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int backend_scale(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int bytes
+) {
+    if (bytes < 0) {
+        output.error = 6;
+        return 0;
+    }
+    if (backend_text(output, "  pop rax\n  imul rax, ", 22) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, bytes) == 0) {
+        return 0;
+    }
+    return backend_text(output, "\n  push rax\n", 12);
+}
+
+int backend_store(
+    struct BackendOutput* output,
+    int type_kind
+) {
+    if (backend_text(output, "  pop rax\n  pop rdi\n  mov ", 26) == 0) {
+        return 0;
+    }
+    if (type_kind == 2) {
+        return backend_text(output, "BYTE PTR [rdi], al\n", 19);
+    }
+    return backend_text(output, "QWORD PTR [rdi], rax\n", 21);
+}
+
 int backend_unary_negate(struct BackendOutput* output) {
     return backend_text(output, "  pop rax\n  neg rax\n  push rax\n", 31);
 }
@@ -354,6 +449,36 @@ int backend_emit_instruction_with_scratch(
             instruction.extra,
             instruction.type_kind
         );
+    }
+    if (instruction.kind == 3) {
+        return backend_address_local(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.extra
+        );
+    }
+    if (instruction.kind == 9) {
+        return backend_field_address(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.extra
+        );
+    }
+    if (instruction.kind == 10) {
+        return backend_load(output, instruction.type_kind);
+    }
+    if (instruction.kind == 14) {
+        return backend_scale(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.extra
+        );
+    }
+    if (instruction.kind == 15) {
+        return backend_store(output, instruction.type_kind);
     }
     return backend_emit_instruction(output, instruction);
 }

@@ -2857,6 +2857,66 @@ int ir_emit_branch(struct IrStorage* ir, int then_block, int else_block) {
     return ir_emit_node(ir, 12, 0, 6, then_block, else_block);
 }
 
+int ir_integer_literal(
+    struct SemanticChecker* checker,
+    struct AstExpression* node
+) {
+    let value = 0;
+    let index = node.start;
+    while (index < node.end) {
+        let digit = 0;
+        if (checker.source[index] == '0') {
+            digit = 0;
+        } else {
+            if (checker.source[index] == '1') {
+                digit = 1;
+            } else {
+                if (checker.source[index] == '2') {
+                    digit = 2;
+                } else {
+                    if (checker.source[index] == '3') {
+                        digit = 3;
+                    } else {
+                        if (checker.source[index] == '4') {
+                            digit = 4;
+                        } else {
+                            if (checker.source[index] == '5') {
+                                digit = 5;
+                            } else {
+                                if (checker.source[index] == '6') {
+                                    digit = 6;
+                                } else {
+                                    if (checker.source[index] == '7') {
+                                        digit = 7;
+                                    } else {
+                                        if (checker.source[index] == '8') {
+                                            digit = 8;
+                                        } else {
+                                            if (checker.source[index] == '9') {
+                                                digit = 9;
+                                            } else {
+                                                checker.error = 3;
+                                                return 0;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (digit < 0) {
+            checker.error = 3;
+            return 0;
+        }
+        value = (value * 10) + digit;
+        index = index + 1;
+    }
+    return value;
+}
+
 int ir_lower_expression(
     struct IrStorage* ir,
     struct SemanticChecker* checker,
@@ -2876,7 +2936,11 @@ int ir_lower_expression(
         return ir_emit_node(ir, 3, 0, semantic_expression_type(checker, expressions, root), 0, 0);
     }
     if (node.kind == 2) {
-        return ir_emit_node(ir, 1, 0, 1, 0, 0);
+        let result = ir_emit_node(ir, 1, 0, 1, 0, 0);
+        if (result >= 0) {
+            ir.instructions[result].extra = ir_integer_literal(checker, node);
+        }
+        return result;
     }
     if (node.kind == 3) {
         return ir_emit_node(ir, 2, 0, 6, 0, 0);
@@ -2927,6 +2991,29 @@ int ir_lower_expression(
             return -1;
         }
         return ir_emit_call(ir, semantic_expression_type(checker, expressions, root), node.left, node.extra);
+    }
+    if (node.kind == 7) {
+        if (ir_lower_expression(ir, checker, expressions, node.left) < 0) {
+            return -1;
+        }
+        if (ir_lower_expression(ir, checker, expressions, node.right) < 0) {
+            return -1;
+        }
+        if (ir_emit_node(ir, 14, 0, 0, 0, 0) < 0) {
+            return -1;
+        }
+        ir.instructions[ir.instruction_count - 1].extra = 8;
+        if (ir_emit_node(ir, 6, 1, 1, node.left, node.right) < 0) {
+            return -1;
+        }
+        return ir_emit_node(
+            ir,
+            10,
+            0,
+            semantic_expression_type(checker, expressions, root),
+            node.left,
+            0
+        );
     }
     ir.error = 3;
     return -1;
@@ -3230,7 +3317,7 @@ int ir_valid_instruction_kind(int kind) {
     if (kind < 1) {
         return 0;
     }
-    if (kind > 13) {
+    if (kind > 15) {
         return 0;
     }
     return 1;
