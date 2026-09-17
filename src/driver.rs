@@ -183,6 +183,14 @@ mod tests {
         assert!(assembly.contains(".globl backend_constant"));
         assert!(assembly.contains(".globl backend_function_label"));
         assert!(assembly.contains(".globl backend_binary"));
+        assert!(assembly.contains(".globl backend_call"));
+        assert!(assembly.contains(".globl backend_parameter_store"));
+        assert!(assembly.contains(".globl backend_branch"));
+        assert!(assembly.contains(".globl backend_jump"));
+        assert!(assembly.contains(".globl backend_block_label"));
+        assert!(source.contains("if (operator == 10)"));
+        assert!(source.contains("if (instruction.kind == 12)"));
+        assert!(source.contains("if (instruction.kind == 13)"));
         assert!(assembly.contains(".globl backend_emit_instruction"));
         assert!(assembly.contains(".globl backend_integer"));
         assert!(assembly.contains(".globl backend_load_local"));
@@ -197,5 +205,22 @@ mod tests {
         assert!(source.contains("if (instruction.kind == 1)"));
         assert!(source.contains("if (instruction.kind == 15)"));
         assert!(source.contains("return backend_constant("));
+    }
+
+    #[test]
+    fn compiles_the_k_compiler_driver() {
+        let parser = include_str!("../compiler/parser.k");
+        let backend = include_str!("../compiler/backend.k");
+        let driver = include_str!("../compiler/driver.k");
+        let source = format!("{parser}\n{backend}\n{driver}");
+        let assembly = compile_source(&source).expect("K compiler driver should compile");
+        assert!(assembly.contains(".globl compiler_init"));
+        assert!(assembly.contains(".globl compiler_frontend"));
+        assert!(assembly.contains(".globl compiler_emit_backend"));
+        assert!(source.contains("parse_program_tree"));
+        assert!(source.contains("semantic_check_parser"));
+        assert!(source.contains("ir_lower_program"));
+        assert!(source.contains("ir_validate"));
+        assert!(source.contains("backend_emit_function"));
     }
 }

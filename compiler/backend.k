@@ -16,6 +16,8 @@ struct BackendInstruction {
     int left;
     int right;
     int extra;
+    char* name;
+    int name_length;
 }
 
 // These records mirror the caller-owned IR ranges in parser.k.  A local
@@ -378,8 +380,246 @@ int backend_binary(struct BackendOutput* output, int operator) {
             48
         );
     }
+    if (operator >= 5) {
+        if (backend_text(output, "  pop rdi\n", 10) == 0) {
+            return 0;
+        }
+        if (backend_text(output, "  pop rax\n", 10) == 0) {
+            return 0;
+        }
+        if (backend_text(output, "  cmp rax, rdi\n", 15) == 0) {
+            return 0;
+        }
+        if (operator == 5) {
+            if (backend_text(output, "  sete al\n", 10) == 0) {
+                return 0;
+            }
+        } else {
+            if (operator == 6) {
+                if (backend_text(output, "  setne al\n", 11) == 0) {
+                    return 0;
+                }
+            } else {
+                if (operator == 7) {
+                    if (backend_text(output, "  setl al\n", 10) == 0) {
+                        return 0;
+                    }
+                } else {
+                    if (operator == 8) {
+                        if (backend_text(output, "  setle al\n", 11) == 0) {
+                            return 0;
+                        }
+                    } else {
+                        if (operator == 9) {
+                            if (backend_text(output, "  setg al\n", 10) == 0) {
+                                return 0;
+                            }
+                        } else {
+                            if (operator == 10) {
+                                if (backend_text(output, "  setge al\n", 11) == 0) {
+                                    return 0;
+                                }
+                            } else {
+                                output.error = 3;
+                                return 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (backend_text(output, "  movzx rax, al\n", 16) == 0) {
+            return 0;
+        }
+        return backend_text(output, "  push rax\n", 11);
+    }
     output.error = 3;
     return 0;
+}
+
+int backend_block_label(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int block
+) {
+    if (block <= 0) {
+        return 1;
+    }
+    if (backend_text(output, ".Lblock_", 8) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, block) == 0) {
+        return 0;
+    }
+    return backend_text(output, ":\n", 2);
+}
+
+int backend_branch(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int then_block,
+    int else_block
+) {
+    if (then_block <= 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (else_block <= 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (backend_text(output, "  pop rax\n  test rax, rax\n  jne .Lblock_", 40) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, then_block) == 0) {
+        return 0;
+    }
+    if (backend_text(output, "\n  jmp .Lblock_", 15) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, else_block) == 0) {
+        return 0;
+    }
+    return backend_char(output, '\n');
+}
+
+int backend_jump(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int target
+) {
+    if (target <= 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (backend_text(output, "  jmp .Lblock_", 14) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, target) == 0) {
+        return 0;
+    }
+    return backend_char(output, '\n');
+}
+
+int backend_call(
+    struct BackendOutput* output,
+    char* name,
+    int name_length,
+    int argument_count
+) {
+    if (name_length < 0) {
+        output.error = 2;
+        return 0;
+    }
+    if (argument_count < 0) {
+        output.error = 3;
+        return 0;
+    }
+    if (argument_count > 6) {
+        output.error = 3;
+        return 0;
+    }
+    let index = argument_count;
+    while (index > 0) {
+        index = index - 1;
+        if (index == 0) {
+            if (backend_text(output, "  pop rdi\n", 10) == 0) {
+                return 0;
+            }
+        } else {
+            if (index == 1) {
+                if (backend_text(output, "  pop rsi\n", 10) == 0) {
+                    return 0;
+                }
+            } else {
+                if (index == 2) {
+                    if (backend_text(output, "  pop rdx\n", 10) == 0) {
+                        return 0;
+                    }
+                } else {
+                    if (index == 3) {
+                        if (backend_text(output, "  pop rcx\n", 10) == 0) {
+                            return 0;
+                        }
+                    } else {
+                        if (index == 4) {
+                            if (backend_text(output, "  pop r8\n", 9) == 0) {
+                                return 0;
+                            }
+                        } else {
+                            if (backend_text(output, "  pop r9\n", 9) == 0) {
+                                return 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (backend_text(output, "  call ", 7) == 0) {
+        return 0;
+    }
+    if (backend_text(output, name, name_length) == 0) {
+        return 0;
+    }
+    return backend_text(output, "\n  push rax\n", 12);
+}
+
+int backend_parameter_store(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int index
+) {
+    if (index < 0) {
+        output.error = 3;
+        return 0;
+    }
+    if (index > 5) {
+        output.error = 3;
+        return 0;
+    }
+    let slot = (index + 1) * 8;
+    if (index == 0) {
+        if (backend_text(output, "  mov rax, rdi\n  mov QWORD PTR [rbp-", 36) == 0) {
+            return 0;
+        }
+    } else {
+        if (index == 1) {
+            if (backend_text(output, "  mov rax, rsi\n  mov QWORD PTR [rbp-", 36) == 0) {
+                return 0;
+            }
+        } else {
+            if (index == 2) {
+                if (backend_text(output, "  mov rax, rdx\n  mov QWORD PTR [rbp-", 36) == 0) {
+                    return 0;
+                }
+            } else {
+                if (index == 3) {
+                    if (backend_text(output, "  mov rax, rcx\n  mov QWORD PTR [rbp-", 36) == 0) {
+                        return 0;
+                    }
+                } else {
+                    if (index == 4) {
+                        if (backend_text(output, "  mov rax, r8\n  mov QWORD PTR [rbp-", 35) == 0) {
+                            return 0;
+                        }
+                    } else {
+                        if (backend_text(output, "  mov rax, r9\n  mov QWORD PTR [rbp-", 35) == 0) {
+                            return 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (backend_integer(output, scratch, scratch_capacity, slot) == 0) {
+        return 0;
+    }
+    return backend_text(output, "], rax\n", 7);
 }
 
 int backend_constant(
@@ -413,6 +653,14 @@ int backend_emit_instruction(
     }
     if (instruction.kind == 11) {
         return backend_return(output, instruction.extra);
+    }
+    if (instruction.kind == 7) {
+        return backend_call(
+            output,
+            instruction.name,
+            instruction.name_length,
+            instruction.extra
+        );
     }
     output.error = 4;
     return 0;
@@ -479,6 +727,23 @@ int backend_emit_instruction_with_scratch(
     }
     if (instruction.kind == 15) {
         return backend_store(output, instruction.type_kind);
+    }
+    if (instruction.kind == 12) {
+        return backend_branch(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.left,
+            instruction.right
+        );
+    }
+    if (instruction.kind == 13) {
+        return backend_jump(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.left
+        );
     }
     return backend_emit_instruction(output, instruction);
 }
@@ -573,6 +838,42 @@ int backend_emit_function(
     if (backend_function_prologue(output) == 0) {
         return 0;
     }
+    if (function.parameter_count < 0) {
+        output.error = 7;
+        return 0;
+    }
+    if (function.parameter_count > 6) {
+        output.error = 3;
+        return 0;
+    }
+    if (function.parameter_count > 0) {
+        if (backend_text(output, "  sub rsp, ", 11) == 0) {
+            return 0;
+        }
+        if (backend_integer(
+            output,
+            program.scratch,
+            program.scratch_capacity,
+            function.parameter_count * 8
+        ) == 0) {
+            return 0;
+        }
+        if (backend_char(output, '\n') == 0) {
+            return 0;
+        }
+    }
+    let parameter_index = 0;
+    while (parameter_index < function.parameter_count) {
+        if (backend_parameter_store(
+            output,
+            program.scratch,
+            program.scratch_capacity,
+            parameter_index
+        ) == 0) {
+            return 0;
+        }
+        parameter_index = parameter_index + 1;
+    }
     let block_index = function.block_start;
     let block_end = function.block_start + function.block_count;
     let instruction_end = function.start + function.count;
@@ -584,6 +885,14 @@ int backend_emit_function(
         if (program.blocks[block_index].start +
             program.blocks[block_index].count > instruction_end) {
             output.error = 7;
+            return 0;
+        }
+        if (backend_block_label(
+            output,
+            program.scratch,
+            program.scratch_capacity,
+            program.blocks[block_index].id
+        ) == 0) {
             return 0;
         }
         if (backend_emit_block(

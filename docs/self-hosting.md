@@ -56,10 +56,14 @@ selection now dispatches unary negate, arithmetic, and return IR records;
 integer constants, integer formatting, typed local stack-slot load/store
 emitters, and the first pointer/memory operations are now available.
 Address-of-local, field address adjustment, indirect loads, scaling, and
-indirect stores use explicit instruction dispatch. Calls and control-flow
-label emission remain the next backend work. The K IR lowering now preserves
+indirect stores use explicit instruction dispatch. The K IR lowering now preserves
 integer literal payloads and lowers pointer indexing into base evaluation,
 element scaling, address addition, and an indirect load.
+The backend now also has a System V call emitter for up to six integer or
+pointer arguments, caller-owned callee name metadata, and incoming parameter
+register stores into deterministic stack slots. Control-flow label emission
+now supports comparison results, conditional branches, jumps, and numbered
+basic-block labels.
 
 The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the
@@ -69,6 +73,13 @@ The machine-model prerequisite is in progress: fixed-width primitive names
 are recognized through the Rust frontend and typed IR layout. Exact-width
 operations, casts, overflow rules, and backend lowering must be specified
 before those types are used as a stable contract by the K-written compiler.
+
+`compiler/driver.k` now provides the caller-owned pipeline context and wires
+parser initialization, AST construction, semantic checking, IR lowering, and
+IR validation into one `compiler_frontend` entry point. Its
+`compiler_emit_backend` adapter copies validated records into backend-shaped
+storage, emits the assembly header, and iterates semantic functions through
+the K backend.
 
 ## Stage 3: K backend
 

@@ -2643,6 +2643,8 @@ struct IrInstruction {
     int left;
     int right;
     int extra;
+    char* name;
+    int name_length;
 }
 
 struct IrFunction {
@@ -2779,6 +2781,8 @@ int ir_instruction_init(
     instruction.left = left;
     instruction.right = right;
     instruction.extra = 0;
+    instruction.name = "";
+    instruction.name_length = 0;
     return 1;
 }
 
@@ -2799,6 +2803,8 @@ int ir_emit(
     ir.instructions[index].left = instruction.left;
     ir.instructions[index].right = instruction.right;
     ir.instructions[index].extra = instruction.extra;
+    ir.instructions[index].name = instruction.name;
+    ir.instructions[index].name_length = instruction.name_length;
     ir.instruction_count = ir.instruction_count + 1;
     if (ir.current_block >= 0) {
         ir.blocks[ir.current_block].count =
@@ -2828,6 +2834,8 @@ int ir_emit_node(
     ir.instructions[index].left = left;
     ir.instructions[index].right = right;
     ir.instructions[index].extra = 0;
+    ir.instructions[index].name = "";
+    ir.instructions[index].name_length = 0;
     ir.instruction_count = ir.instruction_count + 1;
     if (ir.current_block >= 0) {
         ir.blocks[ir.current_block].count =
@@ -2990,7 +2998,18 @@ int ir_lower_expression(
             ir.error = 2;
             return -1;
         }
-        return ir_emit_call(ir, semantic_expression_type(checker, expressions, root), node.left, node.extra);
+        let result = ir_emit_call(
+            ir,
+            semantic_expression_type(checker, expressions, root),
+            node.left,
+            node.extra
+        );
+        if (result >= 0) {
+            let callee = &expressions.nodes[node.left];
+            ir.instructions[result].name = &checker.source[callee.start];
+            ir.instructions[result].name_length = callee.end - callee.start;
+        }
+        return result;
     }
     if (node.kind == 7) {
         if (ir_lower_expression(ir, checker, expressions, node.left) < 0) {
