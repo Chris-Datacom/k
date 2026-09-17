@@ -308,6 +308,33 @@ int backend_emit_instruction(
     return 0;
 }
 
+int backend_emit_instruction_with_scratch(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    struct BackendInstruction* instruction
+) {
+    if (instruction.kind == 4) {
+        return backend_load_local(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.extra,
+            instruction.type_kind
+        );
+    }
+    if (instruction.kind == 8) {
+        return backend_store_local(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.extra,
+            instruction.type_kind
+        );
+    }
+    return backend_emit_instruction(output, instruction);
+}
+
 int backend_emit_block(
     struct BackendOutput* output,
     char* scratch,
@@ -336,32 +363,13 @@ int backend_emit_block(
     let end = block.start + block.count;
     while (index < end) {
         let instruction = &instructions[index];
-        if (instruction.kind == 4) {
-            if (backend_load_local(
-                output,
-                scratch,
-                scratch_capacity,
-                instruction.extra,
-                instruction.type_kind
-            ) == 0) {
-                return 0;
-            }
-        } else {
-            if (instruction.kind == 8) {
-                if (backend_store_local(
-                    output,
-                    scratch,
-                    scratch_capacity,
-                    instruction.extra,
-                    instruction.type_kind
-                ) == 0) {
-                    return 0;
-                }
-            } else {
-                if (backend_emit_instruction(output, instruction) == 0) {
-                    return 0;
-                }
-            }
+        if (backend_emit_instruction_with_scratch(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction
+        ) == 0) {
+            return 0;
         }
         index = index + 1;
     }
@@ -419,7 +427,17 @@ int backend_emit_function(
     }
     let block_index = function.block_start;
     let block_end = function.block_start + function.block_count;
+    let instruction_end = function.start + function.count;
     while (block_index < block_end) {
+        if (program.blocks[block_index].start < function.start) {
+            output.error = 7;
+            return 0;
+        }
+        if (program.blocks[block_index].start +
+            program.blocks[block_index].count > instruction_end) {
+            output.error = 7;
+            return 0;
+        }
         if (backend_emit_block(
             output,
             program.scratch,

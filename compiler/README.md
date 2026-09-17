@@ -39,11 +39,12 @@ broken K bootstrap can be recovered without circular dependencies.
   intrinsic.
 - `backend.k`: the first caller-owned x86-64 assembly output boundary. It
   emits deterministic headers, function labels, prologues, and a return-zero
-  epilogue without allocation or hidden global state. Its initial instruction
-  dispatcher handles unary negate, arithmetic, and return IR records and
-  rejects unsupported instruction kinds explicitly. Integer formatting and
-  typed local stack-slot load/store emitters now use caller-owned scratch
-  storage.
+  epilogue without allocation or hidden global state. Its instruction and
+  block traversal dispatches unary negate, arithmetic, returns, and resolved
+  local stack-slot loads/stores, while rejecting unsupported instruction kinds
+  and invalid ranges explicitly. Integer formatting and typed local stack-slot
+  emitters use caller-owned scratch storage; calls and AArch64 remain
+  unsupported.
 - `sources.txt`: deterministic list of K compiler sources checked by the
   bootstrap scripts. It includes the lexer, parser, and hello-world smoke
   test.

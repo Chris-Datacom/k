@@ -158,5 +158,7 @@ mod tests {
         assert!(assembly.contains(".globl backend_integer"));
         assert!(assembly.contains(".globl backend_load_local"));
         assert!(assembly.contains(".globl backend_store_local"));
+        assert!(assembly.contains(".globl backend_emit_block"));
+        assert!(assembly.contains(".globl backend_emit_function"));
     }
 }
