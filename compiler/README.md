@@ -25,7 +25,9 @@ broken K bootstrap can be recovered without circular dependencies.
 - `parser.k` also includes the first semantic boundary: caller-owned symbols,
   duplicate declaration checks, name resolution, expression-tree validation,
   statement traversal, inferred primitive/pointer types, return checking,
-  assignment compatibility, and condition validation.
+  assignment compatibility, condition validation, and caller-owned function
+  and struct signature tables for calls and field access. Calls retain a
+  caller-owned linked argument arena and validate every argument's type.
 - `hello.k`: executable smoke test using the freestanding Linux `print`
   intrinsic.
 - `sources.txt`: deterministic list of K compiler sources checked by the

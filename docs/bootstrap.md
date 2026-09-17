@@ -61,11 +61,13 @@ statement ranges. `semantic_check_parser` binds the parser's arenas without
 copying them. It now also retains primitive/pointer type kinds on functions and
 parameters, infers expression types, and checks returns, assignments, binary
 operators, indexing, and boolean control-flow conditions. Calls and struct
-field typing remain explicit unsupported cases until function and struct
-signature tables are added. Its status codes distinguish symbol capacity,
-duplicate names, unresolved names, malformed AST storage, invalid operators,
-type mismatches, unsupported calls/fields, return mismatches, assignment
-mismatches, and non-boolean conditions.
+field typing now use caller-owned function, struct, and field signature tables.
+Call arity and every argument type are checked through a caller-owned linked
+argument arena. Its status codes distinguish
+symbol capacity, duplicate names, unresolved names, malformed AST storage,
+invalid operators, type mismatches, unsupported callee forms, unknown
+signatures, arity mismatches, return mismatches, assignment mismatches, and
+non-boolean conditions.
 
 The complete staged plan, including the semantic checker, IR, backend, driver,
 and reproducibility gates, is documented in

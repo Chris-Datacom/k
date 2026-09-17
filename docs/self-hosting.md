@@ -36,10 +36,11 @@ language subset:
 The first semantic slice is implemented in `compiler/parser.k`: it validates
 AST storage, records parameters and `let` declarations in caller-owned symbol
 storage, resolves name expressions, and traverses nested statement ranges.
-It now carries primitive/pointer type kinds, infers expression types, and
-checks returns, assignments, arithmetic, indexing, and boolean conditions.
-Function-call and struct-field signature tables remain the next semantic
-increment.
+It now carries primitive/pointer type kinds, infers expression types, checks
+returns, assignments, arithmetic, indexing, and boolean conditions, and
+collects caller-owned function and struct field signatures. Calls validate
+known callees, arity, and every argument type through a caller-owned linked
+argument-list arena.
 
 The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the

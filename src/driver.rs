@@ -74,6 +74,7 @@ mod tests {
         assert!(assembly.contains(".globl next_token"));
         assert!(assembly.contains(".globl token_slice"));
         assert!(assembly.contains(".globl expression_arena_init"));
+        assert!(assembly.contains(".globl expression_argument_add"));
         assert!(assembly.contains(".globl expression_tree"));
         assert!(assembly.contains(".globl statement_arena_init"));
         assert!(assembly.contains(".globl parse_program_tree"));
@@ -81,6 +82,9 @@ mod tests {
         assert!(assembly.contains(".globl semantic_check_parser"));
         assert!(assembly.contains(".globl semantic_expression_type"));
         assert!(assembly.contains(".globl parse_type_kind"));
+        assert!(assembly.contains(".globl semantic_collect_signatures"));
+        assert!(assembly.contains(".globl semantic_function_index"));
+        assert!(assembly.contains(".globl semantic_field_type"));
     }
 
     #[test]

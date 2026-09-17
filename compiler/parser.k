@@ -24,6 +24,12 @@ struct AstExpression {
     int left;
     int right;
     int extra;
+    int extra_end;
+}
+
+struct AstArgument {
+    int expression;
+    int next;
 }
 
 struct ExpressionArena {
@@ -31,6 +37,9 @@ struct ExpressionArena {
     int capacity;
     int count;
     int error;
+    struct AstArgument* arguments;
+    int argument_capacity;
+    int argument_count;
 }
 
 struct AstFunction {
@@ -53,6 +62,25 @@ struct AstParameter {
     int type_start;
     int type_end;
     int type_kind;
+}
+
+struct AstField {
+    int start;
+    int end;
+    int name_start;
+    int name_end;
+    int type_start;
+    int type_end;
+    int type_kind;
+}
+
+struct AstStruct {
+    int start;
+    int end;
+    int name_start;
+    int name_end;
+    int field_start;
+    int field_count;
 }
 
 struct AstStatement {
@@ -82,6 +110,30 @@ struct AstBlock {
     int statement_count;
 }
 
+struct SemanticFunction {
+    char* source;
+    int name_start;
+    int name_end;
+    int return_type;
+    int parameter_start;
+    int parameter_count;
+}
+
+struct SemanticField {
+    char* source;
+    int name_start;
+    int name_end;
+    int type;
+}
+
+struct SemanticStruct {
+    char* source;
+    int name_start;
+    int name_end;
+    int field_start;
+    int field_count;
+}
+
 struct AstStorage {
     struct AstFunction* functions;
     int function_capacity;
@@ -89,8 +141,23 @@ struct AstStorage {
     int parameter_capacity;
     struct AstExpression* expressions;
     int expression_capacity;
+    struct AstArgument* arguments;
+    int argument_capacity;
     struct AstStatement* statements;
     int statement_capacity;
+}
+
+struct DeclarationStorage {
+    struct AstStruct* struct_records;
+    int struct_record_capacity;
+    struct AstField* field_records;
+    int field_record_capacity;
+    struct SemanticFunction* semantic_functions;
+    int semantic_function_capacity;
+    struct SemanticStruct* semantic_records;
+    int semantic_record_capacity;
+    struct SemanticField* semantic_members;
+    int semantic_member_capacity;
 }
 
 struct AstProgram {
@@ -120,6 +187,16 @@ struct SemanticChecker {
     int error;
     int scope;
     int return_type;
+    struct SemanticFunction* functions;
+    int function_capacity;
+    int function_count;
+    struct SemanticStruct* structs;
+    int struct_capacity;
+    int struct_count;
+    struct SemanticField* fields;
+    int field_capacity;
+    int field_count;
+    struct AstParameter* parameters;
 }
 
 struct Lexer {
@@ -133,6 +210,9 @@ struct Parser {
     struct Token current;
     int current_kind;
     int depth;
+    int parameter_cursor;
+    int field_cursor;
+    struct DeclarationStorage* declarations;
     struct ExpressionArena expression_arena;
     struct StatementArena statement_arena;
 }
@@ -455,6 +535,14 @@ void lexer_init(char* source, int length, struct Lexer* lexer) {
     return;
 }
 
+void parser_bind_declarations(
+    struct Parser* parser,
+    struct DeclarationStorage* declarations
+) {
+    parser.declarations = declarations;
+    return;
+}
+
 int next_token(struct Lexer* lexer, struct Token* out) {
     let next = lex_one(lexer.source, lexer.length, lexer.position, out);
     lexer.position = next;
@@ -468,6 +556,8 @@ void parser_init(struct Parser* parser, char* source, int length) {
     parser.current.start = 0;
     parser.current.end = 0;
     parser.depth = 0;
+    parser.parameter_cursor = 0;
+    parser.field_cursor = 0;
     return;
 }
 
@@ -539,13 +629,34 @@ int parser_take_kind(struct Parser* parser, int kind) {
 void expression_arena_init(
     struct ExpressionArena* arena,
     struct AstExpression* nodes,
-    int capacity
+    int capacity,
+    struct AstArgument* arguments,
+    int argument_capacity
 ) {
     arena.nodes = nodes;
     arena.capacity = capacity;
     arena.count = 0;
     arena.error = 0;
+    arena.arguments = arguments;
+    arena.argument_capacity = argument_capacity;
+    arena.argument_count = 0;
     return;
+}
+
+int expression_argument_add(
+    struct ExpressionArena* arena,
+    int expression,
+    int next
+) {
+    if (arena.argument_count >= arena.argument_capacity) {
+        arena.error = 1;
+        return -1;
+    }
+    let index = arena.argument_count;
+    arena.arguments[index].expression = expression;
+    arena.arguments[index].next = next;
+    arena.argument_count = arena.argument_count + 1;
+    return index;
 }
 
 int expression_arena_add(
@@ -568,6 +679,7 @@ int expression_arena_add(
     arena.nodes[index].left = left;
     arena.nodes[index].right = -1;
     arena.nodes[index].extra = 0;
+    arena.nodes[index].extra_end = 0;
     arena.count = arena.count + 1;
     return index;
 }
@@ -649,22 +761,37 @@ int expression_postfix(
                 let field_node = expression_arena_add(arena, 8, 0, arena.nodes[expression].start, end, expression);
                 if (field_node >= 0) {
                     arena.nodes[field_node].extra = field;
+                    arena.nodes[field_node].extra_end = end;
                 }
                 expression = field_node;
             } else {
                 if (parser_take_char(parser, '(') == 1) {
                     let first = -1;
+                    let first_argument = -1;
+                    let last = -1;
                     let arguments = 0;
                     if (parser_at_char(parser, ')') == 0) {
                         first = expression_tree(parser, 0, arena);
                         if (first < 0) {
                             return -1;
                         }
+                        last = expression_argument_add(arena, first, -1);
+                        if (last < 0) {
+                            return -1;
+                        }
+                        first_argument = last;
                         arguments = 1;
                         while (parser_take_char(parser, ',') == 1) {
-                            if (expression_tree(parser, 0, arena) < 0) {
+                            let argument = expression_tree(parser, 0, arena);
+                            if (argument < 0) {
                                 return -1;
                             }
+                            let next = expression_argument_add(arena, argument, -1);
+                            if (next < 0) {
+                                return -1;
+                            }
+                            arena.arguments[last].next = next;
+                            last = next;
                             arguments = arguments + 1;
                         }
                     }
@@ -678,6 +805,7 @@ int expression_postfix(
                     if (call_node >= 0) {
                         arena.nodes[call_node].right = first;
                         arena.nodes[call_node].extra = arguments;
+                        arena.nodes[call_node].extra_end = first_argument;
                     }
                     expression = call_node;
                 } else {
@@ -1034,7 +1162,7 @@ int parse_function_tree(
         return 0;
     }
     let parameter_count = 0;
-    let parameter_start = parser.depth;
+    let parameter_start = parser.parameter_cursor;
     let running = 1;
     while (running == 1) {
         if (parser_take_char(parser, ')') == 1) {
@@ -1048,7 +1176,7 @@ int parse_function_tree(
             if (parser_peek(parser) != 1) {
                 return 0;
             }
-            let parameter = parser.depth;
+            let parameter = parser.parameter_cursor;
             if (parameter >= parameter_capacity) {
                 statements.error = 3;
                 return 0;
@@ -1064,7 +1192,7 @@ int parse_function_tree(
             parameters[parameter].type_end = parameter_name_start;
             parameters[parameter].type_kind = parameter_type;
             parameter_count = parameter_count + 1;
-            parser.depth = parser.depth + 1;
+            parser.parameter_cursor = parser.parameter_cursor + 1;
             if (parser_take_char(parser, ',') == 0) {
                 if (parser_take_char(parser, ')') == 0) {
                     return 0;
@@ -1088,6 +1216,70 @@ int parse_function_tree(
     function.body_start = body_statement_start;
     function.body_count = body_statement_count;
     function.return_type = return_type;
+    return 1;
+}
+
+int parse_struct_tree(
+    struct Parser* parser,
+    struct AstStruct* definition,
+    struct AstField* fields,
+    int field_capacity
+) {
+    let start = parser_position(parser);
+    if (parser_take_kind(parser, 13) == 0) {
+        return 0;
+    }
+    if (parser_peek(parser) != 1) {
+        return 0;
+    }
+    let name_start = parser.current.start;
+    let name_end = parser.current.end;
+    parser_advance(parser);
+    if (parser_take_char(parser, '{') == 0) {
+        return 0;
+    }
+    let field_start = parser.field_cursor;
+    let field_count = 0;
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, '}') == 1) {
+            running = 0;
+        } else {
+            let field_begin = parser_position(parser);
+            let field_type = parse_type_kind(parser);
+            if (field_type == 0) {
+                return 0;
+            }
+            if (parser_peek(parser) != 1) {
+                return 0;
+            }
+            let field = parser.field_cursor;
+            if (field >= field_capacity) {
+                return 0;
+            }
+            let field_name_start = parser.current.start;
+            let field_name_end = parser.current.end;
+            parser_advance(parser);
+            if (parser_take_char(parser, ';') == 0) {
+                return 0;
+            }
+            fields[field].start = field_begin;
+            fields[field].end = parser_position(parser);
+            fields[field].name_start = field_name_start;
+            fields[field].name_end = field_name_end;
+            fields[field].type_start = field_begin;
+            fields[field].type_end = field_name_start;
+            fields[field].type_kind = field_type;
+            parser.field_cursor = parser.field_cursor + 1;
+            field_count = field_count + 1;
+        }
+    }
+    definition.start = start;
+    definition.end = parser_position(parser);
+    definition.name_start = name_start;
+    definition.name_end = name_end;
+    definition.field_start = field_start;
+    definition.field_count = field_count;
     return 1;
 }
 
@@ -1456,7 +1648,16 @@ int parse_program_ast(
             running = 0;
         } else {
             if (parser_peek(parser) == 13) {
-                if (parse_struct(parser) == 0) {
+                if (struct_count >= parser.declarations.struct_record_capacity) {
+                    program.error = 2;
+                    return 0;
+                }
+                if (parse_struct_tree(
+                    parser,
+                    &parser.declarations.struct_records[struct_count],
+                    parser.declarations.field_records,
+                    parser.declarations.field_record_capacity
+                ) == 0) {
                     program.error = 1;
                     return 0;
                 }
@@ -1493,7 +1694,9 @@ int parse_program_tree(
     expression_arena_init(
         &parser.expression_arena,
         storage.expressions,
-        storage.expression_capacity
+        storage.expression_capacity,
+        storage.arguments,
+        storage.argument_capacity
     );
     statement_arena_init(
         &parser.statement_arena,
@@ -1559,6 +1762,12 @@ void semantic_init(
     checker.error = 0;
     checker.scope = 0;
     checker.return_type = 3;
+    checker.function_capacity = 0;
+    checker.function_count = 0;
+    checker.struct_capacity = 0;
+    checker.struct_count = 0;
+    checker.field_capacity = 0;
+    checker.field_count = 0;
     return;
 }
 
@@ -1591,6 +1800,136 @@ int semantic_same_name(
         offset = offset + 1;
     }
     return same;
+}
+
+void semantic_bind_signatures(
+    struct SemanticChecker* checker,
+    struct DeclarationStorage* declarations,
+    struct AstParameter* parameters
+) {
+    checker.functions = declarations.semantic_functions;
+    checker.function_capacity = declarations.semantic_function_capacity;
+    checker.structs = declarations.semantic_records;
+    checker.struct_capacity = declarations.semantic_record_capacity;
+    checker.fields = declarations.semantic_members;
+    checker.field_capacity = declarations.semantic_member_capacity;
+    checker.function_count = 0;
+    checker.struct_count = 0;
+    checker.field_count = 0;
+    checker.parameters = parameters;
+    return;
+}
+
+int semantic_collect_signatures(
+    struct SemanticChecker* checker,
+    struct AstProgram* program,
+    struct AstStorage* storage,
+    struct DeclarationStorage* declarations
+) {
+    let index = 0;
+    while (index < program.function_count) {
+        if (checker.function_count >= checker.function_capacity) {
+            checker.error = 11;
+            return 0;
+        }
+        let source_function = &storage.functions[index];
+        let prior = 0;
+        while (prior < checker.function_count) {
+            if (semantic_same_name(
+                checker,
+                source_function.name_start,
+                source_function.name_end,
+                checker.functions[prior].name_start,
+                checker.functions[prior].name_end
+            ) == 1) {
+                checker.error = 2;
+                return 0;
+            }
+            prior = prior + 1;
+        }
+        checker.functions[index].source = checker.source;
+        checker.functions[index].name_start = source_function.name_start;
+        checker.functions[index].name_end = source_function.name_end;
+        checker.functions[index].return_type = source_function.return_type;
+        checker.functions[index].parameter_start = source_function.parameter_start;
+        checker.functions[index].parameter_count = source_function.parameter_count;
+        checker.function_count = checker.function_count + 1;
+        index = index + 1;
+    }
+    index = 0;
+    while (index < program.struct_count) {
+        if (checker.struct_count >= checker.struct_capacity) {
+            checker.error = 11;
+            return 0;
+        }
+        let source_struct = &declarations.struct_records[index];
+        checker.structs[index].source = checker.source;
+        checker.structs[index].name_start = source_struct.name_start;
+        checker.structs[index].name_end = source_struct.name_end;
+        checker.structs[index].field_start = source_struct.field_start;
+        checker.structs[index].field_count = source_struct.field_count;
+        checker.struct_count = checker.struct_count + 1;
+        let field_index = 0;
+        while (field_index < source_struct.field_count) {
+            if (checker.field_count >= checker.field_capacity) {
+                checker.error = 11;
+                return 0;
+            }
+            let source_field = &declarations.field_records[source_struct.field_start + field_index];
+            checker.fields[checker.field_count].source = checker.source;
+            checker.fields[checker.field_count].name_start = source_field.name_start;
+            checker.fields[checker.field_count].name_end = source_field.name_end;
+            checker.fields[checker.field_count].type = source_field.type_kind;
+            checker.field_count = checker.field_count + 1;
+            field_index = field_index + 1;
+        }
+        index = index + 1;
+    }
+    return 1;
+}
+
+int semantic_function_index(
+    struct SemanticChecker* checker,
+    int start,
+    int end
+) {
+    let index = 0;
+    while (index < checker.function_count) {
+        if (semantic_same_name(
+            checker,
+            start,
+            end,
+            checker.functions[index].name_start,
+            checker.functions[index].name_end
+        ) == 1) {
+            return index;
+        }
+        index = index + 1;
+    }
+    checker.error = 12;
+    return -1;
+}
+
+int semantic_field_type(
+    struct SemanticChecker* checker,
+    int start,
+    int end
+) {
+    let index = 0;
+    while (index < checker.field_count) {
+        if (semantic_same_name(
+            checker,
+            start,
+            end,
+            checker.fields[index].name_start,
+            checker.fields[index].name_end
+        ) == 1) {
+            return checker.fields[index].type;
+        }
+        index = index + 1;
+    }
+    checker.error = 13;
+    return 0;
 }
 
 int semantic_declare(
@@ -1746,8 +2085,62 @@ int semantic_expression_type(
         return 1;
     }
     if (node.kind == 6) {
-        checker.error = 7;
-        return 0;
+        if (node.left < 0) {
+            checker.error = 4;
+            return 0;
+        }
+        if (node.left >= checker.expression_arena.count) {
+            checker.error = 4;
+            return 0;
+        }
+        let callee = &expressions.nodes[node.left];
+        if (callee.kind != 1) {
+            checker.error = 7;
+            return 0;
+        }
+        let function_index = semantic_function_index(checker, callee.start, callee.end);
+        if (function_index < 0) {
+            return 0;
+        }
+        let function = &checker.functions[function_index];
+        if (node.extra != function.parameter_count) {
+            checker.error = 14;
+            return 0;
+        }
+        let argument_index = node.extra_end;
+        let argument_position = 0;
+        while (argument_position < node.extra) {
+            if (argument_index < 0) {
+                checker.error = 4;
+                return 0;
+            }
+            if (argument_index >= expressions.argument_count) {
+                checker.error = 4;
+                return 0;
+            }
+            let argument = &expressions.arguments[argument_index];
+            let argument_type = semantic_expression_type(checker, expressions, argument.expression);
+            if (argument_type == 0) {
+                return 0;
+            }
+            let parameter_index = function.parameter_start + argument_position;
+            if (parameter_index < 0) {
+                checker.error = 4;
+                return 0;
+            }
+            let parameter_type = checker.parameters[parameter_index].type_kind;
+            if (argument_type != parameter_type) {
+                checker.error = 9;
+                return 0;
+            }
+            argument_index = argument.next;
+            argument_position = argument_position + 1;
+        }
+        if (argument_index >= 0) {
+            checker.error = 4;
+            return 0;
+        }
+        return function.return_type;
     }
     if (node.kind == 7) {
         let base = semantic_expression_type(checker, expressions, node.left);
@@ -1769,8 +2162,15 @@ int semantic_expression_type(
         return 1;
     }
     if (node.kind == 8) {
-        checker.error = 7;
-        return 0;
+        let base = semantic_expression_type(checker, expressions, node.left);
+        if (base == 0) {
+            return 0;
+        }
+        if (base != 5) {
+            checker.error = 13;
+            return 0;
+        }
+        return semantic_field_type(checker, node.extra, node.extra_end);
     }
     checker.error = 4;
     return 0;
@@ -1811,7 +2211,28 @@ int semantic_expression(
         if (semantic_expression(checker, expressions, node.left) == 0) {
             return 0;
         }
-        return semantic_expression(checker, expressions, node.right);
+        let argument_index = node.extra_end;
+        let argument_position = 0;
+        while (argument_position < node.extra) {
+            if (argument_index < 0) {
+                checker.error = 4;
+                return 0;
+            }
+            if (argument_index >= expressions.argument_count) {
+                checker.error = 4;
+                return 0;
+            }
+            if (semantic_expression(checker, expressions, expressions.arguments[argument_index].expression) == 0) {
+                return 0;
+            }
+            argument_index = expressions.arguments[argument_index].next;
+            argument_position = argument_position + 1;
+        }
+        if (argument_index >= 0) {
+            checker.error = 4;
+            return 0;
+        }
+        return 1;
     }
     if (node.kind == 7) {
         if (semantic_expression(checker, expressions, node.left) == 0) {
@@ -2022,6 +2443,14 @@ int semantic_check_parser(
     struct AstStorage* storage
 ) {
     semantic_bind(checker, &parser.expression_arena, &parser.statement_arena);
+    semantic_bind_signatures(
+        checker,
+        parser.declarations,
+        storage.parameters
+    );
+    if (semantic_collect_signatures(checker, program, storage, parser.declarations) == 0) {
+        return 0;
+    }
     return semantic_check_program(checker, program, storage);
 }
 
