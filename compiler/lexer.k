@@ -11,9 +11,59 @@ struct Token {
 // 1 = identifier
 // 2 = decimal integer
 // 3 = punctuation or operator
-// 4 = whitespace
+// 4..13 = keywords
 // -1 = invalid input
 int lex_one(char* source, int length, int position, struct Token* out) {
+    let scanning = true;
+    while (scanning) {
+        if (position < length) {
+            let skipped = source[position];
+            if (skipped == ' ') {
+                position = position + 1;
+            } else {
+                if (skipped == '\n') {
+                    position = position + 1;
+                } else {
+                    if (skipped == '\t') {
+                        position = position + 1;
+                    } else {
+                        if (skipped == '\r') {
+                            position = position + 1;
+                        } else {
+                            if (skipped == '/') {
+                                if (position + 1 < length) {
+                                    if (source[position + 1] == '/') {
+                                        position = position + 2;
+                                        let comment_scanning = true;
+                                        while (comment_scanning) {
+                                            if (position < length) {
+                                            if (source[position] != '\n') {
+                                                position = position + 1;
+                                            } else {
+                                                comment_scanning = false;
+                                            }
+                                            } else {
+                                                comment_scanning = false;
+                                            }
+                                        }
+                                    } else {
+                                        scanning = false;
+                                    }
+                                } else {
+                                    scanning = false;
+                                }
+                            } else {
+                                scanning = false;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            scanning = false;
+        }
+    }
+
     if (position >= length) {
         out.kind = 0;
         out.start = position;
@@ -24,23 +74,6 @@ int lex_one(char* source, int length, int position, struct Token* out) {
     let current = source[position];
     out.start = position;
     out.end = position + 1;
-
-    if (current == ' ') {
-        out.kind = 4;
-        return position + 1;
-    }
-    if (current == '\n') {
-        out.kind = 4;
-        return position + 1;
-    }
-    if (current == '\t') {
-        out.kind = 4;
-        return position + 1;
-    }
-    if (current == '\r') {
-        out.kind = 4;
-        return position + 1;
-    }
 
     if (current >= '0') {
         if (current <= '9') {
@@ -118,6 +151,112 @@ int lex_one(char* source, int length, int position, struct Token* out) {
         }
         out.kind = 1;
         out.end = next;
+        if (next - position == 2) {
+            if (source[position] == 'i') {
+                if (source[position + 1] == 'f') {
+                    out.kind = 4;
+                }
+            }
+        }
+        if (next - position == 3) {
+            if (source[position] == 'i') {
+                if (source[position + 1] == 'n') {
+                    if (source[position + 2] == 't') {
+                        out.kind = 5;
+                    }
+                }
+            }
+            if (source[position] == 'l') {
+                if (source[position + 1] == 'e') {
+                    if (source[position + 2] == 't') {
+                        out.kind = 6;
+                    }
+                }
+            }
+        }
+        if (next - position == 4) {
+            if (source[position] == 'c') {
+                if (source[position + 1] == 'h') {
+                    if (source[position + 2] == 'a') {
+                        if (source[position + 3] == 'r') {
+                            out.kind = 7;
+                        }
+                    }
+                }
+            }
+            if (source[position] == 'e') {
+                if (source[position + 1] == 'l') {
+                    if (source[position + 2] == 's') {
+                        if (source[position + 3] == 'e') {
+                            out.kind = 8;
+                        }
+                    }
+                }
+            }
+            if (source[position] == 't') {
+                if (source[position + 1] == 'r') {
+                    if (source[position + 2] == 'u') {
+                        if (source[position + 3] == 'e') {
+                            out.kind = 9;
+                        }
+                    }
+                }
+            }
+        }
+        if (next - position == 5) {
+            if (source[position] == 'w') {
+                if (source[position + 1] == 'h') {
+                    if (source[position + 2] == 'i') {
+                        if (source[position + 3] == 'l') {
+                            if (source[position + 4] == 'e') {
+                                out.kind = 10;
+                            }
+                        }
+                    }
+                }
+            }
+            if (source[position] == 'f') {
+                if (source[position + 1] == 'a') {
+                    if (source[position + 2] == 'l') {
+                        if (source[position + 3] == 's') {
+                            if (source[position + 4] == 'e') {
+                                out.kind = 11;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (next - position == 6) {
+            if (source[position] == 'r') {
+                if (source[position + 1] == 'e') {
+                    if (source[position + 2] == 't') {
+                        if (source[position + 3] == 'u') {
+                            if (source[position + 4] == 'r') {
+                                if (source[position + 5] == 'n') {
+                                    out.kind = 12;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (next - position == 6) {
+            if (source[position] == 's') {
+                if (source[position + 1] == 't') {
+                    if (source[position + 2] == 'r') {
+                        if (source[position + 3] == 'u') {
+                            if (source[position + 4] == 'c') {
+                                if (source[position + 5] == 't') {
+                                    out.kind = 13;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         return next;
     }
 

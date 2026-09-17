@@ -29,11 +29,11 @@ only reads UTF-8 source bytes and writes the resulting assembly artifact.
 
 The first K-written component is [`compiler/lexer.k`](../compiler/lexer.k).
 It uses caller-owned `char*` input and a `struct Token*` output record, with
-no allocation or runtime dependency. It emits complete spans for whitespace,
-identifiers, decimal integer literals, and basic punctuation. The Rust test
+no allocation or runtime dependency. It emits complete spans for identifiers,
+decimal integer literals, keywords, and basic punctuation while skipping
+whitespace and `//` comments. The Rust test
 suite compiles it through the normal pipeline, making it a checked bootstrap
-artifact while the K implementation grows toward keyword and comment
-recognition.
+artifact while the K implementation grows toward a complete token stream.
 
 [`compiler/hello.k`](../compiler/hello.k) is the first executable K smoke
 test. It calls the freestanding Linux `print` intrinsic, which lowers to the
