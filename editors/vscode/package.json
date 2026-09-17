@@ -1,0 +1,36 @@
+{
+  "name": "k-language-support",
+  "displayName": "K Language Support",
+  "description": "Syntax highlighting and editor support for the K programming language.",
+  "version": "0.1.0",
+  "publisher": "commandercortex",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "k",
+        "aliases": [
+          "K",
+          "k"
+        ],
+        "extensions": [
+          ".k"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "k",
+        "scopeName": "source.k",
+        "path": "./syntaxes/k.tmLanguage.json"
+      }
+    ]
+  }
+}

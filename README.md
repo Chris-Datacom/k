@@ -62,6 +62,8 @@ The syntax and guarantees are provisional until marked stable. See [the language
 - `src/main.rs`: host-side command-line interface.
 - `compiler/lexer.k`: first K-written compiler component, with complete
   identifier and decimal-integer spans in a caller-owned-buffer scanner.
+- `editors/vscode/`: TextMate syntax grammar and VS Code language metadata.
+- `.gitattributes`: GitHub Linguist language classification for `.k` files.
 - `docs/language.md`: current language contract and open decisions.
 - `docs/bootstrap.md`: route from Rust implementation to self-hosting.
 - `examples/hello.k`: a tiny source fixture used by the documentation.
