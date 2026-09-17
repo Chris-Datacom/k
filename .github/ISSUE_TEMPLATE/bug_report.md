@@ -1,0 +1,24 @@
+---
+name: Bug report
+about: Report incorrect compiler or CLI behavior
+---
+
+## Description
+
+What happened, and what did you expect?
+
+## Reproduction
+
+```text
+Paste the smallest K source file or command that reproduces the issue.
+```
+
+## Environment
+
+- K revision:
+- Rust version:
+- Operating system:
+
+## Additional context
+
+Include relevant diagnostics or output. Remove secrets and private source code.

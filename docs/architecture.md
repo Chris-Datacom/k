@@ -1,0 +1,32 @@
+# Compiler Architecture
+
+K is organized as a sequence of explicit transformations. Each stage owns one kind of knowledge and communicates through data structures that can be tested independently.
+
+```text
+source text
+    -> lexer       (tokens with byte spans)
+    -> parser      (syntax tree)
+    -> resolver    (names and scopes)
+    -> type checker (types and diagnostics)
+    -> lowerer     (typed intermediate representation)
+    -> backend     (target machine code)
+```
+
+## Host boundary
+
+The command-line binary in `src/main.rs` handles files, arguments, and human-readable output. The compiler library in `src/lib.rs` owns language behavior. Keeping those responsibilities separate is important for self-hosting: the K implementation can replace the host shell while reusing the same pipeline concepts.
+
+## Planned modules
+
+- `lexer`: converts source bytes into tokens and reports spans.
+- `parser`: validates grammar and creates an untyped syntax tree.
+- `sema`: resolves declarations, scopes, types, and invalid operations.
+- `ir`: stores a small target-independent representation.
+- `codegen`: emits assembly or object code for the first supported target.
+- `driver`: coordinates stages and diagnostics without embedding policy in them.
+
+## Design constraints
+
+The core should remain deterministic, testable without a filesystem, and suitable for a future freestanding build. Allocation may be used in the Rust bootstrap implementation, but compiler stages should not depend on hidden global state or host-specific behavior.
+
+Every stage should preserve enough source span information for diagnostics. Intermediate representations should be serializable or printable so the Rust compiler and future K compiler can be compared during bootstrap.
