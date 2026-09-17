@@ -142,6 +142,14 @@ impl Generator {
                         .get(name)
                         .ok_or_else(|| self.error("unknown local"))?
                 )),
+                Instruction::FieldAddress { offset, .. } => {
+                        self.output.push_str("  pop rax\n");
+                        if *offset == 0 {
+                            self.output.push_str("  push rax\n");
+                        } else {
+                            self.output.push_str(&format!("  add rax, {offset}\n  push rax\n"));
+                        }
+                }
                 Instruction::Load { .. } => {
                     self.output
                         .push_str("  pop rax\n  mov rax, QWORD PTR [rax]\n  push rax\n");
@@ -280,5 +288,16 @@ mod tests {
         let program = parse("char read(char* ptr) { return ptr[1]; }").unwrap();
         let assembly = emit(&program).unwrap();
         assert!(assembly.contains("imul rax, 1"));
+    }
+
+    #[test]
+    fn emits_struct_field_offsets_for_reads_and_writes() {
+        let program = parse(
+            "struct Token { int kind; int start; } int read(struct Token* token) { token.start = 42; return token.start; }",
+        )
+        .unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains("add rax, 8"));
+        assert!(assembly.contains("mov QWORD PTR [rdi], rax"));
     }
 }

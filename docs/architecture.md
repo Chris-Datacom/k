@@ -23,12 +23,14 @@ The command-line binary in `src/main.rs` handles files, arguments, and human-rea
 - `sema`: resolves declarations, scopes, types, and invalid operations.
 - `ir`: lowers checked programs into typed locals, basic blocks, explicit
   constants, loads/stores, arithmetic, calls, and control-flow instructions;
-  it also performs constant folding and unreachable-block pruning.
+  it also performs constant folding, unreachable-block pruning, and
+  deterministic ordered struct layouts with explicit field offsets.
 - `codegen`: emits deterministic x86-64 System V assembly for the first
   supported target. It has no runtime or libc dependency, which is the first
   step toward a freestanding kernel toolchain.
 - String literals are emitted into `.rodata`; indexed pointer arithmetic uses
-  the pointee size recorded by the typed IR.
+  the pointee size recorded by the typed IR; struct field access lowers to
+  address adjustment followed by the normal load/store instructions.
 - `driver`: coordinates stages and diagnostics without embedding policy in them.
 - `driver::compile_source`: the filesystem-independent source-buffer API;
   filesystem reads and writes remain in the command-line binary.

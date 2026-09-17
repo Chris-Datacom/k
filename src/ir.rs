@@ -34,6 +34,7 @@ pub enum Instruction {
     LoadLocal { name: String, ty: IrType },
     StoreLocal { name: String, ty: IrType },
     AddressLocal { name: String, ty: IrType },
+    FieldAddress { offset: i64, ty: IrType },
     Load { ty: IrType },
     Store { ty: IrType },
     Scale { bytes: i64 },
@@ -54,8 +55,20 @@ pub struct BasicBlock {
 
 #[derive(Clone, Debug)]
 pub struct TypedProgram {
-    pub structs: BTreeMap<String, Vec<(String, IrType)>>,
+    pub structs: BTreeMap<String, StructLayout>,
     pub functions: BTreeMap<String, IrFunction>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructLayout {
+    pub size: i64,
+    pub fields: BTreeMap<String, StructFieldLayout>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructFieldLayout {
+    pub offset: i64,
+    pub ty: IrType,
 }
 
 #[derive(Clone, Debug)]
@@ -69,16 +82,40 @@ pub struct IrFunction {
 pub fn lower(program: &Program) -> Result<TypedProgram, Vec<sema::SemanticError>> {
     sema::check(program)?;
     let source = fold_constants(program);
+    let structs = build_struct_layouts(&source);
     let functions = source
         .functions
         .iter()
-        .map(lower_function)
+        .map(|function| lower_function(function, &structs))
         .map(|(name, mut function)| {
             optimize_function(&mut function);
             (name, function)
         })
         .collect();
-    Ok(TypedProgram { structs: BTreeMap::new(), functions })
+    Ok(TypedProgram { structs, functions })
+}
+
+fn build_struct_layouts(program: &Program) -> BTreeMap<String, StructLayout> {
+    program
+        .structs
+        .iter()
+        .map(|definition| {
+            let mut offset = 0;
+            let fields = definition
+                .fields
+                .iter()
+                .map(|field| {
+                    let layout = StructFieldLayout {
+                        offset,
+                        ty: ir_type(&field.ty),
+                    };
+                    offset += ir_size(&layout.ty);
+                    (field.name.clone(), layout)
+                })
+                .collect();
+            (definition.name.clone(), StructLayout { size: offset, fields })
+        })
+        .collect()
 }
 
 fn fold_constants(program: &Program) -> Program {
@@ -177,7 +214,10 @@ fn fold_expression(expression: &mut Expression) {
     }
 }
 
-fn lower_function(function: &Function) -> (String, IrFunction) {
+fn lower_function(
+    function: &Function,
+    structs: &BTreeMap<String, StructLayout>,
+) -> (String, IrFunction) {
     let mut locals = function
         .parameters
         .iter()
@@ -194,6 +234,7 @@ fn lower_function(function: &Function) -> (String, IrFunction) {
             instructions: Vec::new(),
         }],
         locals: &locals,
+        structs,
     };
     builder.block(0, &function.body);
     let blocks = builder.blocks;
@@ -352,6 +393,7 @@ fn collect_locals(block: &Block, locals: &mut Vec<Local>) {
 struct FunctionBuilder<'locals> {
     blocks: Vec<BasicBlock>,
     locals: &'locals [Local],
+    structs: &'locals BTreeMap<String, StructLayout>,
 }
 
 impl FunctionBuilder<'_> {
@@ -555,12 +597,7 @@ impl FunctionBuilder<'_> {
                 );
             }
             Expression::Field { base, .. } => {
-                self.expression(id, base);
-                self.push(id, Instruction::Constant(0));
-                self.push(id, Instruction::Binary {
-                    operator: BinaryOperator::Add,
-                    ty: IrType::Pointer(Box::new(expression_type(expression))),
-                });
+                self.field_address(id, base, expression);
                 self.push(id, Instruction::Load { ty: expression_type(expression) });
             }
         }
@@ -598,8 +635,44 @@ impl FunctionBuilder<'_> {
                     },
                 );
             }
+            Expression::Field { base, .. } => self.field_address(id, base, expression),
             _ => {}
         }
+    }
+
+    fn field_address(&mut self, id: usize, base: &Expression, field: &Expression) {
+        let (struct_name, field_name) = match field {
+            Expression::Field { base, field, .. } => {
+                let base_type = self.expression_type(base);
+                let name = match base_type {
+                    IrType::Struct(name) => name,
+                    IrType::Pointer(inner) => match *inner {
+                        IrType::Struct(name) => name,
+                        _ => return,
+                    },
+                    _ => return,
+                };
+                (name, field)
+            }
+            _ => return,
+        };
+        let Some(field_layout) = self
+            .structs
+            .get(&struct_name)
+            .and_then(|layout| layout.fields.get(field_name))
+            .cloned()
+        else { return };
+        match self.expression_type(base) {
+            IrType::Struct(_) => self.lvalue(id, base),
+            _ => self.expression(id, base),
+        }
+        self.push(
+            id,
+            Instruction::FieldAddress {
+                offset: field_layout.offset,
+                ty: IrType::Pointer(Box::new(field_layout.ty.clone())),
+            },
+        );
     }
 
     fn local(&self, name: &str) -> Option<&Local> {
@@ -612,6 +685,22 @@ impl FunctionBuilder<'_> {
                 .local(value)
                 .map(|local| local.ty.clone())
                 .unwrap_or(IrType::Int),
+            Expression::Field { base, field, .. } => {
+                let base_type = self.expression_type(base);
+                let name = match base_type {
+                    IrType::Struct(name) => name,
+                    IrType::Pointer(inner) => match *inner {
+                        IrType::Struct(name) => name,
+                        _ => return IrType::Int,
+                    },
+                    _ => return IrType::Int,
+                };
+                self.structs
+                    .get(&name)
+                    .and_then(|layout| layout.fields.get(field))
+                    .map(|field| field.ty.clone())
+                    .unwrap_or(IrType::Int)
+            }
             _ => expression_type(expression),
         }
     }
@@ -676,6 +765,14 @@ fn pointee_size(ty: &IrType) -> i64 {
     }
 }
 
+fn ir_size(ty: &IrType) -> i64 {
+    match ty {
+        IrType::Struct(_) => 8,
+        IrType::Void | IrType::Int | IrType::Pointer(_) => 8,
+        IrType::Char | IrType::Bool => 1,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{lower, Instruction, IrType};
@@ -708,5 +805,19 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn records_ordered_struct_field_offsets() {
+        let program = parse(
+            "struct Token { char kind; int start; int end; } int read(struct Token* token) { return token.start; }",
+        )
+        .unwrap();
+        let ir = lower(&program).unwrap();
+        let layout = &ir.structs["Token"];
+        assert_eq!(layout.size, 17);
+        assert_eq!(layout.fields["kind"].offset, 0);
+        assert_eq!(layout.fields["start"].offset, 1);
+        assert_eq!(layout.fields["end"].offset, 9);
     }
 }
