@@ -364,59 +364,320 @@ int parser_advance(struct Parser* parser) {
     return next;
 }
 
-int parse_primary(struct Parser* parser) {
-    let next = parser_peek(parser);
-    if (next == 1) {
-        parser_advance(parser);
+char parser_char(struct Parser* parser, int offset) {
+    return parser.lexer.source[parser.current.start + offset];
+}
+
+int parser_at_char(struct Parser* parser, char value) {
+    if (parser_peek(parser) != 3) {
+        return 0;
+    }
+    if (parser_char(parser, 0) == value) {
         return 1;
     }
-    if (next == 2) {
-        parser_advance(parser);
-        return 1;
-    }
-    if (next == 3) {
+    return 0;
+}
+
+int parser_take_char(struct Parser* parser, char value) {
+    if (parser_at_char(parser, value) == 1) {
         parser_advance(parser);
         return 1;
     }
     return 0;
 }
 
-int parse_expression(struct Parser* parser) {
-    return parse_primary(parser);
+int parser_take_kind(struct Parser* parser, int kind) {
+    if (parser_peek(parser) == kind) {
+        parser_advance(parser);
+        return 1;
+    }
+    return 0;
+}
+
+int parser_is_void(struct Parser* parser) {
+    if (parser_peek(parser) != 1) {
+        return 0;
+    }
+    if (parser.current.end - parser.current.start != 4) {
+        return 0;
+    }
+    if (parser_char(parser, 0) == 'v') {
+        if (parser_char(parser, 1) == 'o') {
+            if (parser_char(parser, 2) == 'i') {
+                if (parser_char(parser, 3) == 'd') {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int parse_type(struct Parser* parser) {
+    let parsed = 0;
+    if (parser_take_kind(parser, 5) == 1) {
+        parsed = 1;
+    } else {
+        if (parser_take_kind(parser, 7) == 1) {
+            parsed = 1;
+        } else {
+            if (parser_is_void(parser) == 1) {
+                parser_advance(parser);
+                parsed = 1;
+            } else {
+                if (parser_take_kind(parser, 13) == 1) {
+                    if (parser_take_kind(parser, 1) == 1) {
+                        parsed = 1;
+                    }
+                }
+            }
+        }
+    }
+    while (parser_take_char(parser, '*') == 1) {
+        parsed = parsed;
+    }
+    return parsed;
+}
+
+int parse_expression(struct Parser* parser, char terminator) {
+    let parsed = 0;
+    let parens = 0;
+    let brackets = 0;
+    let running = 1;
+    while (running == 1) {
+        let kind = parser_peek(parser);
+        if (kind == 0) {
+            running = 0;
+        } else {
+            if (kind == 1) {
+                parser_advance(parser);
+                parsed = 1;
+            } else {
+                if (kind == 2) {
+                    parser_advance(parser);
+                    parsed = 1;
+                } else {
+                    if (kind == 3) {
+                        if (parser_at_char(parser, terminator) == 1) {
+                            if (parens == 0) {
+                                if (brackets == 0) {
+                                    running = 0;
+                                } else {
+                                    parser_advance(parser);
+                                }
+                            } else {
+                                parser_advance(parser);
+                            }
+                        } else {
+                            if (parser_at_char(parser, '(') == 1) {
+                                parens = parens + 1;
+                                parser_advance(parser);
+                            } else {
+                                if (parser_at_char(parser, ')') == 1) {
+                                    if (parens > 0) {
+                                        parens = parens - 1;
+                                        parser_advance(parser);
+                                    } else {
+                                        running = 0;
+                                    }
+                                } else {
+                                    if (parser_at_char(parser, '[') == 1) {
+                                        brackets = brackets + 1;
+                                        parser_advance(parser);
+                                    } else {
+                                        if (parser_at_char(parser, ']') == 1) {
+                                            if (brackets > 0) {
+                                                brackets = brackets - 1;
+                                                parser_advance(parser);
+                                            } else {
+                                                running = 0;
+                                            }
+                                        } else {
+                                            parser_advance(parser);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        running = 0;
+                    }
+                }
+            }
+        }
+    }
+    return parsed;
+}
+
+int parse_block(struct Parser* parser) {
+    if (parser_take_char(parser, '{') == 0) {
+        return 0;
+    }
+    let statements = 0;
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, '}') == 1) {
+            running = 0;
+        } else {
+            if (parser_peek(parser) == 0) {
+                running = 0;
+            } else {
+                if (parse_statement(parser) == 0) {
+                    running = 0;
+                } else {
+                    statements = statements + 1;
+                }
+            }
+        }
+    }
+    return statements + 1;
 }
 
 int parse_statement(struct Parser* parser) {
-    let consumed = parse_expression(parser);
-    if (consumed == 0) {
+    let kind = parser_peek(parser);
+    if (kind == 6) {
+        parser_advance(parser);
+        if (parser_take_kind(parser, 1) == 0) {
+            return 0;
+        }
+        if (parser_take_char(parser, '=') == 0) {
+            return 0;
+        }
+        if (parse_expression(parser, ';') == 0) {
+            return 0;
+        }
+        return parser_take_char(parser, ';');
+    }
+    if (kind == 12) {
+        parser_advance(parser);
+        if (parser_at_char(parser, ';') == 0) {
+            if (parse_expression(parser, ';') == 0) {
+                return 0;
+            }
+        }
+        return parser_take_char(parser, ';');
+    }
+    if (kind == 4) {
+        parser_advance(parser);
+        if (parser_take_char(parser, '(') == 0) {
+            return 0;
+        }
+        if (parse_expression(parser, ')') == 0) {
+            return 0;
+        }
+        if (parser_take_char(parser, ')') == 0) {
+            return 0;
+        }
+        return parse_block(parser);
+    }
+    if (kind == 10) {
+        parser_advance(parser);
+        if (parser_take_char(parser, '(') == 0) {
+            return 0;
+        }
+        if (parse_expression(parser, ')') == 0) {
+            return 0;
+        }
+        if (parser_take_char(parser, ')') == 0) {
+            return 0;
+        }
+        return parse_block(parser);
+    }
+    if (parser_at_char(parser, '{') == 1) {
+        return parse_block(parser);
+    }
+    if (parse_expression(parser, ';') == 0) {
         return 0;
     }
-    if (parser_peek(parser) == 3) {
-        parser_advance(parser);
+    return parser_take_char(parser, ';');
+}
+
+int parse_struct(struct Parser* parser) {
+    if (parser_take_kind(parser, 13) == 0) {
+        return 0;
+    }
+    if (parser_take_kind(parser, 1) == 0) {
+        return 0;
+    }
+    if (parser_take_char(parser, '{') == 0) {
+        return 0;
+    }
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, '}') == 1) {
+            running = 0;
+        } else {
+            if (parse_type(parser) == 0) {
+                return 0;
+            }
+            if (parser_take_kind(parser, 1) == 0) {
+                return 0;
+            }
+            if (parser_take_char(parser, ';') == 0) {
+                return 0;
+            }
+        }
     }
     return 1;
 }
 
+int parse_function(struct Parser* parser) {
+    if (parse_type(parser) == 0) {
+        return 0;
+    }
+    if (parser_take_kind(parser, 1) == 0) {
+        return 0;
+    }
+    if (parser_take_char(parser, '(') == 0) {
+        return 0;
+    }
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, ')') == 1) {
+            running = 0;
+        } else {
+            if (parse_type(parser) == 0) {
+                return 0;
+            }
+            if (parser_take_kind(parser, 1) == 0) {
+                return 0;
+            }
+            if (parser_take_char(parser, ',') == 1) {
+                parser.depth = parser.depth + 1;
+            } else {
+                if (parser_take_char(parser, ')') == 1) {
+                    running = 0;
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
+    return parse_block(parser);
+}
+
 int parse_program(struct Parser* parser) {
     let count = 0;
-    let loop_running = 1;
-    while (loop_running == 1) {
+    let running = 1;
+    while (running == 1) {
         if (parser_peek(parser) == 0) {
-            loop_running = 0;
+            running = 0;
         } else {
-            if (parse_statement(parser) == 0) {
-                loop_running = 0;
+            if (parser_peek(parser) == 13) {
+                if (parse_struct(parser) == 0) {
+                    return 0;
+                }
             } else {
-                count = count + 1;
+                if (parse_function(parser) == 0) {
+                    return 0;
+                }
             }
+            count = count + 1;
         }
     }
     return count;
 }
 
 int parse_example(struct Parser* parser) {
-    let count = parse_program(parser);
-    if (count > 0) {
-        return count;
-    }
-    return 0;
+    return parse_program(parser);
 }

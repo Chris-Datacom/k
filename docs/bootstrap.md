@@ -37,10 +37,17 @@ artifact while the K implementation grows toward a complete token stream.
 
 The next stage adds the parser boundary in [`compiler/parser.k`](../compiler/parser.k).
 It keeps the same caller-owned `Lexer` model, adds a `Parser` state record,
-and demonstrates the recursive-descent flow the bootstrap compiler will grow
-into: token peeking, token advancement, statement parsing, and a loop that
-consumes the stream to the end of input. The Rust host compiles this source
-through the normal pipeline as another checked bootstrap artifact.
+and implements structural recursive descent for structs, function signatures,
+blocks, declarations, control flow, and expression-shaped token sequences.
+The Rust host compiles this source through the normal pipeline as another
+checked bootstrap artifact. The parser is intentionally structural until the
+K implementation has source-slice and diagnostic storage needed for a full
+AST; its acceptance boundary is nevertheless checked by the same host compiler
+that will serve as the differential reference.
+
+The complete staged plan, including the semantic checker, IR, backend, driver,
+and reproducibility gates, is documented in
+[`docs/self-hosting.md`](self-hosting.md).
 
 The lexer now exposes a stateful token-stream boundary:
 

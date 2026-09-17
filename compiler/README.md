@@ -16,9 +16,9 @@ broken K bootstrap can be recovered without circular dependencies.
   including complete identifiers, decimal literals, keyword classification,
   whitespace skipping, and `//` comment skipping. It also exposes the
   stateful `Lexer`/`next_token` token-stream interface.
-- `parser.k`: a small recursive-descent parser skeleton built on the same
-  token-stream model. It exercises source-driven parsing, statement loops,
-  and parser state management without leaving the stable bootstrap subset.
+- `parser.k`: an allocation-free structural recursive-descent parser built on
+  the same token-stream model. It recognizes structs, function signatures,
+  blocks, declarations, control flow, and expression-shaped token sequences.
 - `hello.k`: executable smoke test using the freestanding Linux `print`
   intrinsic.
 - `sources.txt`: deterministic list of K compiler sources checked by the
@@ -33,11 +33,12 @@ Windows users can run the equivalent `scripts/check-bootstrap.ps1`.
 
 The K compiler must grow in this order:
 
-1. Add source-slice access to the lexer.
-2. K parser for the supported language subset.
-3. K semantic checker and symbol tables.
-4. K typed IR lowering and x86-64 backend.
-5. A K compiler driver that can compile the compiler sources.
-6. Two reproducible K-built releases matching the Rust reference output.
+1. Complete the K lexer and parser against the Rust conformance fixtures.
+2. Add a K semantic checker and symbol tables.
+3. Add K typed IR lowering and the x86-64 backend.
+4. Add a K compiler driver that can compile the compiler sources.
+5. Produce two reproducible K-built releases matching the Rust reference.
 
-Only after step 6 may the Rust implementation be removed.
+See [`docs/self-hosting.md`](../docs/self-hosting.md) for the gates and
+commands for each stage. Only after the final reproducibility gate may the
+Rust implementation be removed.
