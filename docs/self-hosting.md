@@ -53,9 +53,9 @@ The first K-written backend slice is in `compiler/backend.k`. It owns a
 caller-provided character buffer and emits deterministic x86-64 assembly
 headers, function labels, prologues, and a return-zero epilogue. Instruction
 selection now dispatches unary negate, arithmetic, and return IR records;
-integer formatting and typed local stack-slot load/store emitters are now
-available. Calls, pointer memory, and control-flow label emission remain the
-next backend work.
+integer constants, integer formatting, and typed local stack-slot load/store
+emitters are now available. Calls, pointer memory, and control-flow label
+emission remain the next backend work.
 
 The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the
@@ -78,6 +78,12 @@ Add the remaining compiler pipeline in small deterministic boundaries:
 The K backend must reproduce the Rust backend for the conformance fixtures.
 Target-specific operations such as the Linux `print` intrinsic stay behind a
 documented backend boundary.
+
+The first complete-pipeline arithmetic regression is now covered by the Rust
+driver: `int main() { let answer = 20 + 22; return answer; }` is compiled for
+the KrumpyOS x86-64 target and checked for constant emission, local storage,
+local reload, and return-value handling. This is the baseline for equivalent
+K-written backend output before adding a runtime/QEMU execution harness.
 
 Target selection is part of the compiler contract. The first self-hosted
 release must reproduce the x86-64 KrumpyOS target before the AArch64 backend is

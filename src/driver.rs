@@ -63,6 +63,31 @@ mod tests {
     }
 
     #[test]
+    fn compiles_arithmetic_program_through_the_complete_pipeline() {
+        let source = "int main() { let answer = 20 + 22; return answer; }";
+        let assembly = compile_source_for_target(source, Target::X86_64KrumpyOs).unwrap();
+
+        let constant = assembly
+            .find("  push 42\n")
+            .expect("constant folding should emit the arithmetic result");
+        let store = assembly
+            .find("  mov QWORD PTR [rbp-8], rax\n")
+            .expect("the let binding should store its value");
+        let load = assembly
+            .find("  mov rax, QWORD PTR [rbp-8]\n")
+            .expect("the return should load the local value");
+        let return_value = assembly[load..]
+            .find("  pop rax\n")
+            .map(|offset| load + offset)
+            .expect("the return should consume the stack value");
+
+        assert!(constant < store);
+        assert!(store < load);
+        assert!(load < return_value);
+        assert!(!assembly.contains(".globl _start"));
+    }
+
+    #[test]
     fn returns_structured_diagnostics() {
         let error = compile_source("int main() { return missing; }").unwrap_err();
         assert!(matches!(error, CompileError::Semantic(_)));
@@ -152,6 +177,7 @@ mod tests {
         let source = include_str!("../compiler/backend.k");
         let assembly = compile_source(source).expect("K backend slice should compile");
         assert!(assembly.contains(".globl backend_init"));
+        assert!(assembly.contains(".globl backend_constant"));
         assert!(assembly.contains(".globl backend_function_label"));
         assert!(assembly.contains(".globl backend_binary"));
         assert!(assembly.contains(".globl backend_emit_instruction"));
@@ -160,5 +186,7 @@ mod tests {
         assert!(assembly.contains(".globl backend_store_local"));
         assert!(assembly.contains(".globl backend_emit_block"));
         assert!(assembly.contains(".globl backend_emit_function"));
+        assert!(source.contains("if (instruction.kind == 1)"));
+        assert!(source.contains("return backend_constant("));
     }
 }

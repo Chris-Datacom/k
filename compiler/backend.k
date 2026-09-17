@@ -287,6 +287,21 @@ int backend_binary(struct BackendOutput* output, int operator) {
     return 0;
 }
 
+int backend_constant(
+    struct BackendOutput* output,
+    char* scratch,
+    int scratch_capacity,
+    int value
+) {
+    if (backend_text(output, "  mov rax, ", 11) == 0) {
+        return 0;
+    }
+    if (backend_integer(output, scratch, scratch_capacity, value) == 0) {
+        return 0;
+    }
+    return backend_text(output, "\n  push rax\n", 12);
+}
+
 int backend_emit_instruction(
     struct BackendOutput* output,
     struct BackendInstruction* instruction
@@ -314,6 +329,14 @@ int backend_emit_instruction_with_scratch(
     int scratch_capacity,
     struct BackendInstruction* instruction
 ) {
+    if (instruction.kind == 1) {
+        return backend_constant(
+            output,
+            scratch,
+            scratch_capacity,
+            instruction.extra
+        );
+    }
     if (instruction.kind == 4) {
         return backend_load_local(
             output,
