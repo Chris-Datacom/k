@@ -60,6 +60,17 @@ mod tests {
         assert!(assembly.contains(".globl lex_one"));
         assert!(assembly.contains("add rax, 8"));
         assert!(assembly.contains("mov QWORD PTR [rdi], rax"));
+        assert!(assembly.contains(".globl next_token"));
+        assert!(assembly.contains(".globl lexer_init"));
+    }
+
+    #[test]
+    fn compiles_the_k_bootstrap_parser() {
+        let source = include_str!("../compiler/parser.k");
+        let assembly = compile_source(source).expect("bootstrap parser should compile");
+        assert!(assembly.contains(".globl parse_program"));
+        assert!(assembly.contains(".globl parser_init"));
+        assert!(assembly.contains(".globl next_token"));
     }
 
     #[test]

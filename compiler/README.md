@@ -14,7 +14,11 @@ broken K bootstrap can be recovered without circular dependencies.
 
 - `lexer.k`: allocation-free source scanning into caller-owned `Token` records,
   including complete identifiers, decimal literals, keyword classification,
-  whitespace skipping, and `//` comment skipping.
+  whitespace skipping, and `//` comment skipping. It also exposes the
+  stateful `Lexer`/`next_token` token-stream interface.
+- `parser.k`: a small recursive-descent parser skeleton built on the same
+  token-stream model. It exercises source-driven parsing, statement loops,
+  and parser state management without leaving the stable bootstrap subset.
 - `hello.k`: executable smoke test using the freestanding Linux `print`
   intrinsic.
 - `sources.txt`: deterministic list of K compiler sources checked by the
@@ -29,7 +33,7 @@ Windows users can run the equivalent `scripts/check-bootstrap.ps1`.
 
 The K compiler must grow in this order:
 
-1. Add a token-stream loop and source-slice access to the lexer.
+1. Add source-slice access to the lexer.
 2. K parser for the supported language subset.
 3. K semantic checker and symbol tables.
 4. K typed IR lowering and x86-64 backend.

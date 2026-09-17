@@ -35,6 +35,29 @@ whitespace and `//` comments. The Rust test
 suite compiles it through the normal pipeline, making it a checked bootstrap
 artifact while the K implementation grows toward a complete token stream.
 
+The next stage adds the parser boundary in [`compiler/parser.k`](../compiler/parser.k).
+It keeps the same caller-owned `Lexer` model, adds a `Parser` state record,
+and demonstrates the recursive-descent flow the bootstrap compiler will grow
+into: token peeking, token advancement, statement parsing, and a loop that
+consumes the stream to the end of input. The Rust host compiles this source
+through the normal pipeline as another checked bootstrap artifact.
+
+The lexer now exposes a stateful token-stream boundary:
+
+```k
+struct Lexer {
+    char* source;
+    int length;
+    int position;
+}
+
+void lexer_init(char* source, int length, struct Lexer* lexer);
+int next_token(struct Lexer* lexer, struct Token* out);
+```
+
+The parser can own the `Lexer` storage and advance it without allocations;
+each call writes one `Token` record and returns its kind.
+
 [`compiler/hello.k`](../compiler/hello.k) is the first executable K smoke
 test. It calls the freestanding Linux `print` intrinsic, which lowers to the
 x86-64 `write` system call. The Rust host can compile it with:
