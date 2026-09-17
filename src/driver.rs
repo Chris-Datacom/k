@@ -69,8 +69,18 @@ mod tests {
         let source = include_str!("../compiler/parser.k");
         let assembly = compile_source(source).expect("bootstrap parser should compile");
         assert!(assembly.contains(".globl parse_program"));
+        assert!(assembly.contains(".globl parse_program_ast"));
         assert!(assembly.contains(".globl parser_init"));
         assert!(assembly.contains(".globl next_token"));
+        assert!(assembly.contains(".globl token_slice"));
+        assert!(assembly.contains(".globl expression_arena_init"));
+        assert!(assembly.contains(".globl expression_tree"));
+        assert!(assembly.contains(".globl statement_arena_init"));
+        assert!(assembly.contains(".globl parse_program_tree"));
+        assert!(assembly.contains(".globl semantic_init"));
+        assert!(assembly.contains(".globl semantic_check_parser"));
+        assert!(assembly.contains(".globl semantic_expression_type"));
+        assert!(assembly.contains(".globl parse_type_kind"));
     }
 
     #[test]

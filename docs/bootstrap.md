@@ -40,10 +40,32 @@ It keeps the same caller-owned `Lexer` model, adds a `Parser` state record,
 and implements structural recursive descent for structs, function signatures,
 blocks, declarations, control flow, and expression-shaped token sequences.
 The Rust host compiles this source through the normal pipeline as another
-checked bootstrap artifact. The parser is intentionally structural until the
-K implementation has source-slice and diagnostic storage needed for a full
-AST; its acceptance boundary is nevertheless checked by the same host compiler
-that will serve as the differential reference.
+checked bootstrap artifact. The parser also exposes `SourceSlice`, `AstProgram`, `AstFunction`, and
+`AstNode` records. `parse_program_ast` writes function records into a
+caller-provided buffer and reports capacity overflow explicitly; no allocator
+or hidden global storage is involved. `ExpressionArena` now stores nested primary, unary, binary, call, index, and
+field nodes in caller-provided memory. Each node contains its kind, operator,
+source span, child indices, and auxiliary value. Capacity exhaustion and parse
+errors remain explicit arena status codes.
+
+Statement and function records now use the same ownership model. `AstStorage`
+groups caller-provided function, parameter, expression, and statement buffers;
+`parse_program_tree` fills those buffers and records body ranges, statement
+kinds, expression roots, parameters, and `if`/`else` block ranges. The parser
+does not allocate or retain source-owned state outside the supplied storage.
+
+The first semantic boundary is also present in `compiler/parser.k`.
+`SemanticChecker` owns a caller-provided symbol buffer and validates expression
+child indices, name references, duplicate declarations, parameters, and
+statement ranges. `semantic_check_parser` binds the parser's arenas without
+copying them. It now also retains primitive/pointer type kinds on functions and
+parameters, infers expression types, and checks returns, assignments, binary
+operators, indexing, and boolean control-flow conditions. Calls and struct
+field typing remain explicit unsupported cases until function and struct
+signature tables are added. Its status codes distinguish symbol capacity,
+duplicate names, unresolved names, malformed AST storage, invalid operators,
+type mismatches, unsupported calls/fields, return mismatches, assignment
+mismatches, and non-boolean conditions.
 
 The complete staged plan, including the semantic checker, IR, backend, driver,
 and reproducibility gates, is documented in

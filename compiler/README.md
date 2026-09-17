@@ -16,9 +16,16 @@ broken K bootstrap can be recovered without circular dependencies.
   including complete identifiers, decimal literals, keyword classification,
   whitespace skipping, and `//` comment skipping. It also exposes the
   stateful `Lexer`/`next_token` token-stream interface.
-- `parser.k`: an allocation-free structural recursive-descent parser built on
-  the same token-stream model. It recognizes structs, function signatures,
-  blocks, declarations, control flow, and expression-shaped token sequences.
+- `parser.k`: an allocation-free recursive-descent parser built on the same
+  token-stream model. It recognizes structs, function signatures, blocks,
+  declarations, control flow, and expression-shaped token sequences. It also
+  exposes source slices and caller-owned program/function AST records, plus a
+  fixed-capacity expression arena for nested expression nodes and a
+  fixed-capacity statement arena for function bodies.
+- `parser.k` also includes the first semantic boundary: caller-owned symbols,
+  duplicate declaration checks, name resolution, expression-tree validation,
+  statement traversal, inferred primitive/pointer types, return checking,
+  assignment compatibility, and condition validation.
 - `hello.k`: executable smoke test using the freestanding Linux `print`
   intrinsic.
 - `sources.txt`: deterministic list of K compiler sources checked by the

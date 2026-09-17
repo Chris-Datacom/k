@@ -4,6 +4,124 @@ struct Token {
     int end;
 }
 
+struct SourceSlice {
+    char* source;
+    int start;
+    int end;
+}
+
+struct AstNode {
+    int kind;
+    int start;
+    int end;
+}
+
+struct AstExpression {
+    int kind;
+    int operator;
+    int start;
+    int end;
+    int left;
+    int right;
+    int extra;
+}
+
+struct ExpressionArena {
+    struct AstExpression* nodes;
+    int capacity;
+    int count;
+    int error;
+}
+
+struct AstFunction {
+    int start;
+    int end;
+    int name_start;
+    int name_end;
+    int parameter_count;
+    int parameter_start;
+    int body_start;
+    int body_count;
+    int return_type;
+}
+
+struct AstParameter {
+    int start;
+    int end;
+    int name_start;
+    int name_end;
+    int type_start;
+    int type_end;
+    int type_kind;
+}
+
+struct AstStatement {
+    int kind;
+    int start;
+    int end;
+    int left;
+    int right;
+    int extra;
+    int body_start;
+    int body_count;
+    int else_start;
+    int else_count;
+}
+
+struct StatementArena {
+    struct AstStatement* nodes;
+    int capacity;
+    int count;
+    int error;
+}
+
+struct AstBlock {
+    int start;
+    int end;
+    int statement_start;
+    int statement_count;
+}
+
+struct AstStorage {
+    struct AstFunction* functions;
+    int function_capacity;
+    struct AstParameter* parameters;
+    int parameter_capacity;
+    struct AstExpression* expressions;
+    int expression_capacity;
+    struct AstStatement* statements;
+    int statement_capacity;
+}
+
+struct AstProgram {
+    int start;
+    int end;
+    int function_count;
+    int struct_count;
+    int error;
+}
+
+struct SemanticSymbol {
+    char* source;
+    int start;
+    int end;
+    int scope;
+    int kind;
+    int type;
+}
+
+struct SemanticChecker {
+    char* source;
+    struct SemanticSymbol* symbols;
+    int symbol_capacity;
+    int symbol_count;
+    struct ExpressionArena* expression_arena;
+    struct StatementArena* statement_arena;
+    int error;
+    int scope;
+    int return_type;
+}
+
 struct Lexer {
     char* source;
     int length;
@@ -15,6 +133,8 @@ struct Parser {
     struct Token current;
     int current_kind;
     int depth;
+    struct ExpressionArena expression_arena;
+    struct StatementArena statement_arena;
 }
 
 int lex_one(char* source, int length, int position, struct Token* out) {
@@ -364,6 +484,28 @@ int parser_advance(struct Parser* parser) {
     return next;
 }
 
+int parser_position(struct Parser* parser) {
+    if (parser.current_kind != 0) {
+        return parser.current.start;
+    }
+    return parser.lexer.position;
+}
+
+void token_slice(struct Parser* parser, struct SourceSlice* slice) {
+    slice.source = parser.lexer.source;
+    slice.start = parser.current.start;
+    slice.end = parser.current.end;
+    return;
+}
+
+int slice_length(struct SourceSlice* slice) {
+    return slice.end - slice.start;
+}
+
+char slice_char(struct SourceSlice* slice, int offset) {
+    return slice.source[slice.start + offset];
+}
+
 char parser_char(struct Parser* parser, int offset) {
     return parser.lexer.source[parser.current.start + offset];
 }
@@ -394,6 +536,561 @@ int parser_take_kind(struct Parser* parser, int kind) {
     return 0;
 }
 
+void expression_arena_init(
+    struct ExpressionArena* arena,
+    struct AstExpression* nodes,
+    int capacity
+) {
+    arena.nodes = nodes;
+    arena.capacity = capacity;
+    arena.count = 0;
+    arena.error = 0;
+    return;
+}
+
+int expression_arena_add(
+    struct ExpressionArena* arena,
+    int kind,
+    int operator,
+    int start,
+    int end,
+    int left
+) {
+    if (arena.count >= arena.capacity) {
+        arena.error = 1;
+        return -1;
+    }
+    let index = arena.count;
+    arena.nodes[index].kind = kind;
+    arena.nodes[index].operator = operator;
+    arena.nodes[index].start = start;
+    arena.nodes[index].end = end;
+    arena.nodes[index].left = left;
+    arena.nodes[index].right = -1;
+    arena.nodes[index].extra = 0;
+    arena.count = arena.count + 1;
+    return index;
+}
+
+int expression_primary(
+    struct Parser* parser,
+    struct ExpressionArena* arena
+) {
+    let token_kind = parser_peek(parser);
+    let start = parser.current.start;
+    let end = parser.current.end;
+    if (token_kind == 1) {
+        parser_advance(parser);
+        return expression_arena_add(arena, 1, 0, start, end, -1);
+    }
+    if (token_kind == 2) {
+        parser_advance(parser);
+        return expression_arena_add(arena, 2, 0, start, end, -1);
+    }
+    if (token_kind == 9) {
+        parser_advance(parser);
+        let boolean = expression_arena_add(arena, 3, 0, start, end, -1);
+        if (boolean >= 0) {
+            arena.nodes[boolean].extra = 1;
+        }
+        return boolean;
+    }
+    if (token_kind == 11) {
+        parser_advance(parser);
+        return expression_arena_add(arena, 3, 0, start, end, -1);
+    }
+    if (parser_take_char(parser, '(') == 1) {
+        let nested = expression_tree(parser, 0, arena);
+        if (nested < 0) {
+            return -1;
+        }
+        if (parser_take_char(parser, ')') == 0) {
+            arena.error = 2;
+            return -1;
+        }
+        return nested;
+    }
+    arena.error = 2;
+    return -1;
+}
+
+int expression_postfix(
+    struct Parser* parser,
+    struct ExpressionArena* arena,
+    int expression
+) {
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, '[') == 1) {
+            let index = expression_tree(parser, 0, arena);
+            if (index < 0) {
+                return -1;
+            }
+            let end = parser.current.start;
+            if (parser_take_char(parser, ']') == 0) {
+                arena.error = 2;
+                return -1;
+            }
+            end = parser_position(parser);
+            let index_node = expression_arena_add(arena, 7, 0, arena.nodes[expression].start, end, expression);
+            if (index_node >= 0) {
+                arena.nodes[index_node].right = index;
+            }
+            expression = index_node;
+        } else {
+            if (parser_take_char(parser, '.') == 1) {
+                if (parser_peek(parser) != 1) {
+                    arena.error = 2;
+                    return -1;
+                }
+                let field = parser.current.start;
+                let end = parser.current.end;
+                parser_advance(parser);
+                let field_node = expression_arena_add(arena, 8, 0, arena.nodes[expression].start, end, expression);
+                if (field_node >= 0) {
+                    arena.nodes[field_node].extra = field;
+                }
+                expression = field_node;
+            } else {
+                if (parser_take_char(parser, '(') == 1) {
+                    let first = -1;
+                    let arguments = 0;
+                    if (parser_at_char(parser, ')') == 0) {
+                        first = expression_tree(parser, 0, arena);
+                        if (first < 0) {
+                            return -1;
+                        }
+                        arguments = 1;
+                        while (parser_take_char(parser, ',') == 1) {
+                            if (expression_tree(parser, 0, arena) < 0) {
+                                return -1;
+                            }
+                            arguments = arguments + 1;
+                        }
+                    }
+                    let end = parser_position(parser);
+                    if (parser_take_char(parser, ')') == 0) {
+                        arena.error = 2;
+                        return -1;
+                    }
+                    end = parser_position(parser);
+                    let call_node = expression_arena_add(arena, 6, 0, arena.nodes[expression].start, end, expression);
+                    if (call_node >= 0) {
+                        arena.nodes[call_node].right = first;
+                        arena.nodes[call_node].extra = arguments;
+                    }
+                    expression = call_node;
+                } else {
+                    running = 0;
+                }
+            }
+        }
+        if (expression < 0) {
+            return -1;
+        }
+    }
+    return expression;
+}
+
+int expression_prefix(
+    struct Parser* parser,
+    struct ExpressionArena* arena
+) {
+    if (parser_at_char(parser, '-') == 1) {
+        let start = parser.current.start;
+        parser_advance(parser);
+        let operand = expression_prefix(parser, arena);
+        if (operand < 0) {
+            return -1;
+        }
+        return expression_arena_add(arena, 4, 1, start, arena.nodes[operand].end, operand);
+    }
+    if (parser_at_char(parser, '&') == 1) {
+        let start = parser.current.start;
+        parser_advance(parser);
+        let operand = expression_prefix(parser, arena);
+        if (operand < 0) {
+            return -1;
+        }
+        return expression_arena_add(arena, 4, 2, start, arena.nodes[operand].end, operand);
+    }
+    if (parser_at_char(parser, '*') == 1) {
+        let start = parser.current.start;
+        parser_advance(parser);
+        let operand = expression_prefix(parser, arena);
+        if (operand < 0) {
+            return -1;
+        }
+        return expression_arena_add(arena, 4, 3, start, arena.nodes[operand].end, operand);
+    }
+    let primary = expression_primary(parser, arena);
+    if (primary < 0) {
+        return -1;
+    }
+    return expression_postfix(parser, arena, primary);
+}
+
+int expression_precedence(struct Parser* parser) {
+    if (parser_at_char(parser, '+') == 1) {
+        return 2;
+    }
+    if (parser_at_char(parser, '-') == 1) {
+        return 2;
+    }
+    if (parser_at_char(parser, '*') == 1) {
+        return 3;
+    }
+    if (parser_at_char(parser, '/') == 1) {
+        return 3;
+    }
+    return 0;
+}
+
+int expression_operator(struct Parser* parser) {
+    if (parser_at_char(parser, '+') == 1) {
+        return 1;
+    }
+    if (parser_at_char(parser, '-') == 1) {
+        return 2;
+    }
+    if (parser_at_char(parser, '*') == 1) {
+        return 3;
+    }
+    if (parser_at_char(parser, '/') == 1) {
+        return 4;
+    }
+    return 0;
+}
+
+int expression_tree(
+    struct Parser* parser,
+    int minimum_precedence,
+    struct ExpressionArena* arena
+) {
+    let left = expression_prefix(parser, arena);
+    if (left < 0) {
+        return -1;
+    }
+    let precedence = expression_precedence(parser);
+    while (precedence >= minimum_precedence) {
+        let operator = expression_operator(parser);
+        parser_advance(parser);
+        let right = expression_tree(parser, precedence + 1, arena);
+        if (right < 0) {
+            return -1;
+        }
+        let start = arena.nodes[left].start;
+        let end = arena.nodes[right].end;
+        let binary = expression_arena_add(arena, 5, operator, start, end, left);
+        if (binary >= 0) {
+            arena.nodes[binary].right = right;
+        }
+        left = binary;
+        if (left < 0) {
+            return -1;
+        }
+        precedence = expression_precedence(parser);
+    }
+    return left;
+}
+
+void statement_arena_init(
+    struct StatementArena* arena,
+    struct AstStatement* nodes,
+    int capacity
+) {
+    arena.nodes = nodes;
+    arena.capacity = capacity;
+    arena.count = 0;
+    arena.error = 0;
+    return;
+}
+
+int statement_arena_add(
+    struct StatementArena* arena,
+    int kind,
+    int start,
+    int end,
+    int left,
+    int right
+) {
+    if (arena.count >= arena.capacity) {
+        arena.error = 1;
+        return -1;
+    }
+    let index = arena.count;
+    arena.nodes[index].kind = kind;
+    arena.nodes[index].start = start;
+    arena.nodes[index].end = end;
+    arena.nodes[index].left = left;
+    arena.nodes[index].right = right;
+    arena.nodes[index].extra = 0;
+    arena.nodes[index].body_start = -1;
+    arena.nodes[index].body_count = 0;
+    arena.nodes[index].else_start = -1;
+    arena.nodes[index].else_count = 0;
+    arena.count = arena.count + 1;
+    return index;
+}
+
+int parse_block_tree(
+    struct Parser* parser,
+    struct ExpressionArena* expressions,
+    struct StatementArena* statements,
+    int* block_start,
+    int* block_count,
+    int* block_end
+) {
+    if (parser_take_char(parser, '{') == 0) {
+        statements.error = 2;
+        return 0;
+    }
+    *block_start = parser_position(parser) - 1;
+    let statement_start = statements.count;
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, '}') == 1) {
+            running = 0;
+        } else {
+            if (parser_peek(parser) == 0) {
+                statements.error = 2;
+                return 0;
+            }
+            if (parse_statement_tree(parser, expressions, statements) == 0) {
+                return 0;
+            }
+        }
+    }
+    *block_end = parser_position(parser);
+    *block_count = statements.count - statement_start;
+    return 1;
+}
+
+int parse_statement_tree(
+    struct Parser* parser,
+    struct ExpressionArena* expressions,
+    struct StatementArena* statements
+) {
+    let kind = parser_peek(parser);
+    let start = parser.current.start;
+    if (kind == 6) {
+        parser_advance(parser);
+        if (parser_take_kind(parser, 1) == 0) {
+            statements.error = 2;
+            return 0;
+        }
+        let name_start = parser.current.start;
+        let name_end = parser.current.end;
+        if (parser_take_char(parser, '=') == 0) {
+            statements.error = 2;
+            return 0;
+        }
+        let value = expression_tree(parser, 0, expressions);
+        if (value < 0) {
+            return 0;
+        }
+        if (parser_take_char(parser, ';') == 0) {
+            statements.error = 2;
+            return 0;
+        }
+        let index = statement_arena_add(statements, 1, start, parser_position(parser), name_start, value);
+        if (index >= 0) {
+            statements.nodes[index].extra = name_end;
+        }
+        return index + 1;
+    }
+    if (kind == 12) {
+        parser_advance(parser);
+        let value = -1;
+        if (parser_at_char(parser, ';') == 0) {
+            value = expression_tree(parser, 0, expressions);
+            if (value < 0) {
+                return 0;
+            }
+        }
+        if (parser_take_char(parser, ';') == 0) {
+            statements.error = 2;
+            return 0;
+        }
+        let index = statement_arena_add(statements, 2, start, parser_position(parser), value, -1);
+        return index + 1;
+    }
+    let control = 0;
+    if (kind == 4) {
+        control = 1;
+    }
+    if (kind == 10) {
+        control = 1;
+    }
+    if (control == 1) {
+        parser_advance(parser);
+        if (parser_take_char(parser, '(') == 0) {
+            statements.error = 2;
+            return 0;
+        }
+        let condition = expression_tree(parser, 0, expressions);
+        if (condition < 0) {
+            statements.error = 2;
+            return 0;
+        }
+        if (parser_take_char(parser, ')') == 0) {
+            statements.error = 2;
+            return 0;
+        }
+        let body_start = statements.count;
+        let body = 0;
+        let body_end = 0;
+        if (parse_block_tree(parser, expressions, statements, &body_start, &body, &body_end) == 0) {
+            return 0;
+        }
+        let statement_kind = 7;
+        if (kind == 4) {
+            statement_kind = 6;
+        }
+        let index = statement_arena_add(statements, statement_kind, start, body_end, condition, -1);
+        if (index < 0) {
+            return 0;
+        }
+        statements.nodes[index].body_start = body_start;
+        statements.nodes[index].body_count = body;
+        let has_else = 0;
+        if (kind == 4) {
+            if (parser_take_kind(parser, 8) == 1) {
+                has_else = 1;
+            }
+        }
+        if (has_else == 1) {
+            let else_block_start = statements.count;
+            let else_block_count = 0;
+            let else_end = 0;
+            if (parse_block_tree(parser, expressions, statements, &else_block_start, &else_block_count, &else_end) == 0) {
+                return 0;
+            }
+            statements.nodes[index].else_start = else_block_start;
+            statements.nodes[index].else_count = else_block_count;
+            statements.nodes[index].end = else_end;
+        }
+        return index + 1;
+    }
+    if (parser_at_char(parser, '{') == 1) {
+        let nested_start = 0;
+        let nested_count = 0;
+        let nested_end = 0;
+        if (parse_block_tree(parser, expressions, statements, &nested_start, &nested_count, &nested_end) == 0) {
+            return 0;
+        }
+        let index = statement_arena_add(statements, 5, nested_start, nested_end, -1, -1);
+        if (index < 0) {
+            return 0;
+        }
+        statements.nodes[index].body_start = nested_start;
+        statements.nodes[index].body_count = nested_count;
+        return index + 1;
+    }
+    let left = expression_tree(parser, 0, expressions);
+    if (left < 0) {
+        return 0;
+    }
+    if (parser_take_char(parser, '=') == 1) {
+        let right = expression_tree(parser, 0, expressions);
+        if (right < 0) {
+            return 0;
+        }
+        if (parser_take_char(parser, ';') == 0) {
+            statements.error = 2;
+            return 0;
+        }
+        let index = statement_arena_add(statements, 3, start, parser_position(parser), left, right);
+        return index + 1;
+    }
+    if (parser_take_char(parser, ';') == 0) {
+        statements.error = 2;
+        return 0;
+    }
+    let index = statement_arena_add(statements, 4, start, parser_position(parser), left, -1);
+    return index + 1;
+}
+
+int parse_function_tree(
+    struct Parser* parser,
+    struct ExpressionArena* expressions,
+    struct StatementArena* statements,
+    struct AstFunction* function,
+    struct AstParameter* parameters,
+    int parameter_capacity
+) {
+    let start = parser_position(parser);
+    let return_type = parse_type_kind(parser);
+    if (return_type == 0) {
+        return 0;
+    }
+    if (parser_peek(parser) != 1) {
+        return 0;
+    }
+    let name_start = parser.current.start;
+    let name_end = parser.current.end;
+    parser_advance(parser);
+    if (parser_take_char(parser, '(') == 0) {
+        return 0;
+    }
+    let parameter_count = 0;
+    let parameter_start = parser.depth;
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, ')') == 1) {
+            running = 0;
+        } else {
+            let type_start = parser_position(parser);
+            let parameter_type = parse_type_kind(parser);
+            if (parameter_type == 0) {
+                return 0;
+            }
+            if (parser_peek(parser) != 1) {
+                return 0;
+            }
+            let parameter = parser.depth;
+            if (parameter >= parameter_capacity) {
+                statements.error = 3;
+                return 0;
+            }
+            let parameter_name_start = parser.current.start;
+            let parameter_name_end = parser.current.end;
+            parser_advance(parser);
+            parameters[parameter].start = type_start;
+            parameters[parameter].end = parameter_name_end;
+            parameters[parameter].name_start = parameter_name_start;
+            parameters[parameter].name_end = parameter_name_end;
+            parameters[parameter].type_start = type_start;
+            parameters[parameter].type_end = parameter_name_start;
+            parameters[parameter].type_kind = parameter_type;
+            parameter_count = parameter_count + 1;
+            parser.depth = parser.depth + 1;
+            if (parser_take_char(parser, ',') == 0) {
+                if (parser_take_char(parser, ')') == 0) {
+                    return 0;
+                }
+                running = 0;
+            }
+        }
+    }
+    let body_end = 0;
+    let body_statement_start = 0;
+    let body_statement_count = 0;
+    if (parse_block_tree(parser, expressions, statements, &body_statement_start, &body_statement_count, &body_end) == 0) {
+        return 0;
+    }
+    function.start = start;
+    function.end = body_end;
+    function.name_start = name_start;
+    function.name_end = name_end;
+    function.parameter_count = parameter_count;
+    function.parameter_start = parameter_start;
+    function.body_start = body_statement_start;
+    function.body_count = body_statement_count;
+    function.return_type = return_type;
+    return 1;
+}
+
 int parser_is_void(struct Parser* parser) {
     if (parser_peek(parser) != 1) {
         return 0;
@@ -413,30 +1110,59 @@ int parser_is_void(struct Parser* parser) {
     return 0;
 }
 
-int parse_type(struct Parser* parser) {
+int parse_type_kind(struct Parser* parser) {
     let parsed = 0;
+    let type = 0;
     if (parser_take_kind(parser, 5) == 1) {
         parsed = 1;
+        type = 1;
     } else {
         if (parser_take_kind(parser, 7) == 1) {
             parsed = 1;
+            type = 2;
         } else {
             if (parser_is_void(parser) == 1) {
                 parser_advance(parser);
                 parsed = 1;
+                type = 3;
             } else {
                 if (parser_take_kind(parser, 13) == 1) {
                     if (parser_take_kind(parser, 1) == 1) {
                         parsed = 1;
+                        type = 5;
                     }
                 }
             }
         }
     }
     while (parser_take_char(parser, '*') == 1) {
-        parsed = parsed;
+        if (type == 1) {
+            type = 4;
+        } else {
+            if (type == 2) {
+                type = 4;
+            } else {
+                if (type == 5) {
+                    type = 4;
+                } else {
+                    if (type == 3) {
+                        type = 4;
+                    }
+                }
+            }
+        }
     }
-    return parsed;
+    if (parsed == 0) {
+        return 0;
+    }
+    return type;
+}
+
+int parse_type(struct Parser* parser) {
+    if (parse_type_kind(parser) == 0) {
+        return 0;
+    }
+    return 1;
 }
 
 int parse_expression(struct Parser* parser, char terminator) {
@@ -654,6 +1380,649 @@ int parse_function(struct Parser* parser) {
         }
     }
     return parse_block(parser);
+}
+
+int parse_expression_ast(struct Parser* parser, char terminator, struct AstNode* node) {
+    let start = parser_position(parser);
+    let parsed = parse_expression(parser, terminator);
+    if (parsed == 0) {
+        return 0;
+    }
+    node.kind = 1;
+    node.start = start;
+    node.end = parser_position(parser);
+    return 1;
+}
+
+int parse_function_ast(struct Parser* parser, struct AstFunction* function) {
+    let start = parser_position(parser);
+    if (parse_type(parser) == 0) {
+        return 0;
+    }
+    if (parser_peek(parser) != 1) {
+        return 0;
+    }
+    let name_start = parser.current.start;
+    let name_end = parser.current.end;
+    parser_advance(parser);
+    if (parser_take_char(parser, '(') == 0) {
+        return 0;
+    }
+    let parameters = 0;
+    let running = 1;
+    while (running == 1) {
+        if (parser_take_char(parser, ')') == 1) {
+            running = 0;
+        } else {
+            if (parse_type(parser) == 0) {
+                return 0;
+            }
+            if (parser_take_kind(parser, 1) == 0) {
+                return 0;
+            }
+            parameters = parameters + 1;
+            if (parser_take_char(parser, ',') == 0) {
+                if (parser_take_char(parser, ')') == 0) {
+                    return 0;
+                }
+                running = 0;
+            }
+        }
+    }
+    if (parse_block(parser) == 0) {
+        return 0;
+    }
+    function.start = start;
+    function.end = parser_position(parser);
+    function.name_start = name_start;
+    function.name_end = name_end;
+    function.parameter_count = parameters;
+    return 1;
+}
+
+int parse_program_ast(
+    struct Parser* parser,
+    struct AstProgram* program,
+    struct AstFunction* functions,
+    int function_capacity
+) {
+    let start = parser_position(parser);
+    let function_count = 0;
+    let struct_count = 0;
+    let running = 1;
+    program.error = 0;
+    while (running == 1) {
+        if (parser_peek(parser) == 0) {
+            running = 0;
+        } else {
+            if (parser_peek(parser) == 13) {
+                if (parse_struct(parser) == 0) {
+                    program.error = 1;
+                    return 0;
+                }
+                struct_count = struct_count + 1;
+            } else {
+                if (function_count >= function_capacity) {
+                    program.error = 2;
+                    return 0;
+                }
+                if (parse_function_ast(parser, &functions[function_count]) == 0) {
+                    program.error = 1;
+                    return 0;
+                }
+                function_count = function_count + 1;
+            }
+        }
+    }
+    program.start = start;
+    program.end = parser_position(parser);
+    program.function_count = function_count;
+    program.struct_count = struct_count;
+    return function_count + struct_count;
+}
+
+int parse_program_tree(
+    struct Parser* parser,
+    struct AstProgram* program,
+    struct AstStorage* storage
+) {
+    let start = parser_position(parser);
+    let function_count = 0;
+    let struct_count = 0;
+    let running = 1;
+    expression_arena_init(
+        &parser.expression_arena,
+        storage.expressions,
+        storage.expression_capacity
+    );
+    statement_arena_init(
+        &parser.statement_arena,
+        storage.statements,
+        storage.statement_capacity
+    );
+    program.error = 0;
+    while (running == 1) {
+        if (parser_peek(parser) == 0) {
+            running = 0;
+        } else {
+            if (parser_peek(parser) == 13) {
+                if (parse_struct(parser) == 0) {
+                    program.error = 1;
+                    return 0;
+                }
+                struct_count = struct_count + 1;
+            } else {
+                if (function_count >= storage.function_capacity) {
+                    program.error = 2;
+                    return 0;
+                }
+                if (parse_function_tree(
+                    parser,
+                    &parser.expression_arena,
+                    &parser.statement_arena,
+                    &storage.functions[function_count],
+                    storage.parameters,
+                    storage.parameter_capacity
+                ) == 0) {
+                    program.error = 1;
+                    return 0;
+                }
+                function_count = function_count + 1;
+            }
+        }
+    }
+    if (parser.expression_arena.error != 0) {
+        program.error = 3;
+        return 0;
+    }
+    if (parser.statement_arena.error != 0) {
+        program.error = 3;
+        return 0;
+    }
+    program.start = start;
+    program.end = parser_position(parser);
+    program.function_count = function_count;
+    program.struct_count = struct_count;
+    return function_count + struct_count;
+}
+
+void semantic_init(
+    struct SemanticChecker* checker,
+    char* source,
+    struct SemanticSymbol* symbols,
+    int symbol_capacity
+) {
+    checker.source = source;
+    checker.symbols = symbols;
+    checker.symbol_capacity = symbol_capacity;
+    checker.symbol_count = 0;
+    checker.error = 0;
+    checker.scope = 0;
+    checker.return_type = 3;
+    return;
+}
+
+void semantic_bind(
+    struct SemanticChecker* checker,
+    struct ExpressionArena* expressions,
+    struct StatementArena* statements
+) {
+    checker.expression_arena = expressions;
+    checker.statement_arena = statements;
+    return;
+}
+
+int semantic_same_name(
+    struct SemanticChecker* checker,
+    int left_start,
+    int left_end,
+    int right_start,
+    int right_end
+) {
+    if (left_end - left_start != right_end - right_start) {
+        return 0;
+    }
+    let offset = 0;
+    let same = 1;
+    while (offset < left_end - left_start) {
+        if (checker.source[left_start + offset] != checker.source[right_start + offset]) {
+            same = 0;
+        }
+        offset = offset + 1;
+    }
+    return same;
+}
+
+int semantic_declare(
+    struct SemanticChecker* checker,
+    int start,
+    int end,
+    int kind,
+    int type
+) {
+    let index = 0;
+    while (index < checker.symbol_count) {
+        if (checker.symbols[index].scope == checker.scope) {
+            if (semantic_same_name(
+                checker,
+                start,
+                end,
+                checker.symbols[index].start,
+                checker.symbols[index].end
+            ) == 1) {
+                checker.error = 2;
+                return 0;
+            }
+        }
+        index = index + 1;
+    }
+    if (checker.symbol_count >= checker.symbol_capacity) {
+        checker.error = 1;
+        return 0;
+    }
+    checker.symbols[checker.symbol_count].source = checker.source;
+    checker.symbols[checker.symbol_count].start = start;
+    checker.symbols[checker.symbol_count].end = end;
+    checker.symbols[checker.symbol_count].scope = checker.scope;
+    checker.symbols[checker.symbol_count].kind = kind;
+    checker.symbols[checker.symbol_count].type = type;
+    checker.symbol_count = checker.symbol_count + 1;
+    return 1;
+}
+
+int semantic_resolve(
+    struct SemanticChecker* checker,
+    int start,
+    int end
+) {
+    let index = checker.symbol_count - 1;
+    while (index >= 0) {
+        if (semantic_same_name(
+            checker,
+            start,
+            end,
+            checker.symbols[index].start,
+            checker.symbols[index].end
+        ) == 1) {
+            return 1;
+        }
+        index = index - 1;
+    }
+    checker.error = 3;
+    return 0;
+}
+
+int semantic_name_type(
+    struct SemanticChecker* checker,
+    int start,
+    int end
+) {
+    let index = checker.symbol_count - 1;
+    while (index >= 0) {
+        if (semantic_same_name(
+            checker,
+            start,
+            end,
+            checker.symbols[index].start,
+            checker.symbols[index].end
+        ) == 1) {
+            return checker.symbols[index].type;
+        }
+        index = index - 1;
+    }
+    checker.error = 3;
+    return 0;
+}
+
+int semantic_expression_type(
+    struct SemanticChecker* checker,
+    struct ExpressionArena* expressions,
+    int root
+) {
+    if (root < 0) {
+        return 3;
+    }
+    if (root >= checker.expression_arena.count) {
+        checker.error = 4;
+        return 0;
+    }
+    let node = &expressions.nodes[root];
+    if (node.kind == 1) {
+        return semantic_name_type(checker, node.start, node.end);
+    }
+    if (node.kind == 2) {
+        return 1;
+    }
+    if (node.kind == 3) {
+        return 6;
+    }
+    if (node.kind == 4) {
+        let operand = semantic_expression_type(checker, expressions, node.left);
+        if (operand == 0) {
+            return 0;
+        }
+        if (node.operator == 1) {
+            if (operand != 1) {
+                checker.error = 5;
+                return 0;
+            }
+        }
+        if (node.operator == 2) {
+            return 4;
+        }
+        if (node.operator == 3) {
+            if (operand != 4) {
+                checker.error = 5;
+                return 0;
+            }
+            return 1;
+        }
+        return operand;
+    }
+    if (node.kind == 5) {
+        let left = semantic_expression_type(checker, expressions, node.left);
+        let right = semantic_expression_type(checker, expressions, node.right);
+        if (left == 0) {
+            return 0;
+        }
+        if (right == 0) {
+            return 0;
+        }
+        if (node.operator >= 5) {
+            if (left != right) {
+                checker.error = 6;
+                return 0;
+            }
+            return 6;
+        }
+        if (left != 1) {
+            checker.error = 5;
+            return 0;
+        }
+        if (right != 1) {
+            checker.error = 5;
+            return 0;
+        }
+        return 1;
+    }
+    if (node.kind == 6) {
+        checker.error = 7;
+        return 0;
+    }
+    if (node.kind == 7) {
+        let base = semantic_expression_type(checker, expressions, node.left);
+        let index = semantic_expression_type(checker, expressions, node.right);
+        if (base == 0) {
+            return 0;
+        }
+        if (index == 0) {
+            return 0;
+        }
+        if (base != 4) {
+            checker.error = 5;
+            return 0;
+        }
+        if (index != 1) {
+            checker.error = 5;
+            return 0;
+        }
+        return 1;
+    }
+    if (node.kind == 8) {
+        checker.error = 7;
+        return 0;
+    }
+    checker.error = 4;
+    return 0;
+}
+
+int semantic_expression(
+    struct SemanticChecker* checker,
+    struct ExpressionArena* expressions,
+    int root
+) {
+    if (root < 0) {
+        return 1;
+    }
+    if (root >= checker.expression_arena.count) {
+        checker.error = 4;
+        return 0;
+    }
+    let node = &expressions.nodes[root];
+    if (node.kind == 1) {
+        return semantic_resolve(checker, node.start, node.end);
+    }
+    if (node.kind == 2) {
+        return 1;
+    }
+    if (node.kind == 3) {
+        return 1;
+    }
+    if (node.kind == 4) {
+        return semantic_expression(checker, expressions, node.left);
+    }
+    if (node.kind == 5) {
+        if (semantic_expression(checker, expressions, node.left) == 0) {
+            return 0;
+        }
+        return semantic_expression(checker, expressions, node.right);
+    }
+    if (node.kind == 6) {
+        if (semantic_expression(checker, expressions, node.left) == 0) {
+            return 0;
+        }
+        return semantic_expression(checker, expressions, node.right);
+    }
+    if (node.kind == 7) {
+        if (semantic_expression(checker, expressions, node.left) == 0) {
+            return 0;
+        }
+        return semantic_expression(checker, expressions, node.right);
+    }
+    if (node.kind == 8) {
+        if (semantic_expression(checker, expressions, node.left) == 0) {
+            return 0;
+        }
+        return semantic_expression(checker, expressions, node.right);
+    }
+    checker.error = 4;
+    return 0;
+}
+
+int semantic_statement_range(
+    struct SemanticChecker* checker,
+    struct ExpressionArena* expressions,
+    struct StatementArena* statements,
+    int start,
+    int count
+) {
+    let index = start;
+    let end = start + count;
+    while (index < end) {
+        if (index >= checker.statement_arena.count) {
+            checker.error = 4;
+            return 0;
+        }
+        let statement = &statements.nodes[index];
+        if (statement.kind == 1) {
+            let value_type = semantic_expression_type(checker, expressions, statement.right);
+            if (value_type == 0) {
+                return 0;
+            }
+            if (semantic_declare(checker, statement.left, statement.extra, 1, value_type) == 0) {
+                return 0;
+            }
+        } else {
+            if (statement.kind == 2) {
+                let actual = semantic_expression_type(checker, expressions, statement.left);
+                if (actual == 0) {
+                    return 0;
+                }
+                if (actual != checker.return_type) {
+                    checker.error = 8;
+                    return 0;
+                }
+            } else {
+                if (statement.kind == 3) {
+                    let target = semantic_expression_type(checker, expressions, statement.left);
+                    let value = semantic_expression_type(checker, expressions, statement.right);
+                    if (target == 0) {
+                        return 0;
+                    }
+                    if (value == 0) {
+                        return 0;
+                    }
+                    if (target != value) {
+                        checker.error = 9;
+                        return 0;
+                    }
+                } else {
+                    if (statement.kind == 4) {
+                        let expression_type = semantic_expression_type(checker, expressions, statement.left);
+                        if (expression_type == 0) {
+                            return 0;
+                        }
+                        if (expression_type != 6) {
+                            checker.error = 10;
+                            return 0;
+                        }
+                    } else {
+                        if (statement.kind == 5) {
+                            let expression_type = semantic_expression_type(checker, expressions, statement.left);
+                            if (expression_type == 0) {
+                                return 0;
+                            }
+                            if (expression_type != 6) {
+                                checker.error = 10;
+                                return 0;
+                            }
+                            if (semantic_statement_range(
+                                checker,
+                                expressions,
+                                statements,
+                                statement.body_start,
+                                statement.body_count
+                            ) == 0) {
+                                return 0;
+                            }
+                            if (statement.else_count > 0) {
+                                if (semantic_statement_range(
+                                    checker,
+                                    expressions,
+                                    statements,
+                                    statement.else_start,
+                                    statement.else_count
+                                ) == 0) {
+                                    return 0;
+                                }
+                            }
+                        } else {
+                            if (statement.kind == 6) {
+                            let expression_type = semantic_expression_type(checker, expressions, statement.left);
+                            if (expression_type == 0) {
+                                return 0;
+                            }
+                            if (expression_type != 6) {
+                                checker.error = 10;
+                                return 0;
+                            }
+                            if (semantic_statement_range(
+                                checker,
+                                expressions,
+                                statements,
+                                statement.body_start,
+                                statement.body_count
+                            ) == 0) {
+                                return 0;
+                            }
+                            if (statement.else_count > 0) {
+                                if (semantic_statement_range(
+                                    checker,
+                                    expressions,
+                                    statements,
+                                    statement.else_start,
+                                    statement.else_count
+                                ) == 0) {
+                                    return 0;
+                                }
+                            }
+                            } else {
+                                if (statement.kind == 7) {
+                                    if (semantic_expression_type(checker, expressions, statement.left) == 0) {
+                                        return 0;
+                                    }
+                                    if (semantic_statement_range(
+                                        checker,
+                                        expressions,
+                                        statements,
+                                        statement.body_start,
+                                        statement.body_count
+                                    ) == 0) {
+                                        return 0;
+                                    }
+                                } else {
+                                    checker.error = 4;
+                                    return 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return 1;
+}
+
+int semantic_check_program(
+    struct SemanticChecker* checker,
+    struct AstProgram* program,
+    struct AstStorage* storage
+) {
+    let function_index = 0;
+    checker.error = 0;
+    while (function_index < program.function_count) {
+        checker.scope = function_index + 1;
+        checker.symbol_count = 0;
+        let function = &storage.functions[function_index];
+        checker.return_type = function.return_type;
+        let parameter_index = 0;
+        while (parameter_index < function.parameter_count) {
+            let parameter = &storage.parameters[function.parameter_start + parameter_index];
+            if (semantic_declare(
+                checker,
+                parameter.name_start,
+                parameter.name_end,
+                2,
+                parameter.type_kind
+            ) == 0) {
+                return 0;
+            }
+            parameter_index = parameter_index + 1;
+        }
+        if (semantic_statement_range(
+            checker,
+            checker.expression_arena,
+            checker.statement_arena,
+            function.body_start,
+            function.body_count
+        ) == 0) {
+            return 0;
+        }
+        function_index = function_index + 1;
+    }
+    return 1;
+}
+
+int semantic_check_parser(
+    struct SemanticChecker* checker,
+    struct AstProgram* program,
+    struct Parser* parser,
+    struct AstStorage* storage
+) {
+    semantic_bind(checker, &parser.expression_arena, &parser.statement_arena);
+    return semantic_check_program(checker, program, storage);
 }
 
 int parse_program(struct Parser* parser) {

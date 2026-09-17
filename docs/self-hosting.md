@@ -23,10 +23,23 @@ The K implementation mirrors the reference frontend using only the stable
 language subset:
 
 1. `compiler/lexer.k` provides allocation-free tokenization.
-2. `compiler/parser.k` owns lexer state and parses structs, function
-   signatures, blocks, declarations, control flow, and expressions.
+2. `compiler/parser.k` owns lexer state, exposes source slices, and parses
+   structs, function signatures, blocks, declarations, control flow, and
+   expression-shaped token sequences into caller-owned AST records. Its
+   expression arena provides nested unary, binary, call, index, and field
+   nodes without an allocator. The statement arena stores function bodies,
+   control-flow ranges, assignments, returns, and expression roots in the same
+   caller-owned storage model.
 3. A K semantic checker adds scopes, symbol tables, type compatibility, and
    source-spanned diagnostics.
+
+The first semantic slice is implemented in `compiler/parser.k`: it validates
+AST storage, records parameters and `let` declarations in caller-owned symbol
+storage, resolves name expressions, and traverses nested statement ranges.
+It now carries primitive/pointer type kinds, infers expression types, and
+checks returns, assignments, arithmetic, indexing, and boolean conditions.
+Function-call and struct-field signature tables remain the next semantic
+increment.
 
 The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the
