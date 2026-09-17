@@ -3,11 +3,13 @@
 use std::env;
 use std::fs;
 use std::process::ExitCode;
+use std::str::FromStr;
 
+use k_compiler::driver::{compile_source, compile_source_for_target};
 use k_compiler::lexer::{Lexer, SpannedToken, TokenKind};
 use k_compiler::parser::parse;
 use k_compiler::sema::check;
-use k_compiler::driver::compile_source;
+use k_compiler::target::Target;
 
 fn main() -> ExitCode {
     let mut arguments = env::args().skip(1);
@@ -54,7 +56,18 @@ fn main() -> ExitCode {
                 eprintln!("k compile: expected an output assembly file");
                 return ExitCode::from(2);
             };
-            compile_file(&input, &output)
+            let target = arguments
+                .next()
+                .map(|value| Target::from_str(&value))
+                .transpose();
+            match target {
+                Ok(Some(target)) => compile_file(&input, &output, target),
+                Ok(None) => compile_file(&input, &output, Target::default()),
+                Err(error) => {
+                    eprintln!("k compile: {error}");
+                    ExitCode::from(2)
+                }
+            }
         }
         "help" | "--help" | "-h" => {
             print_usage();
@@ -168,7 +181,7 @@ fn emit_file(path: &str) -> ExitCode {
     }
 }
 
-fn compile_file(input: &str, output: &str) -> ExitCode {
+fn compile_file(input: &str, output: &str, target: Target) -> ExitCode {
     let source = match read_source(input) {
         Ok(source) => source,
         Err(error) => {
@@ -176,7 +189,7 @@ fn compile_file(input: &str, output: &str) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let assembly = match compile_source(&source) {
+    let assembly = match compile_source_for_target(&source, target) {
         Ok(assembly) => assembly,
         Err(error) => {
             eprintln!("{error}");
@@ -198,5 +211,5 @@ fn read_source(path: &str) -> Result<String, String> {
 }
 
 fn print_usage() {
-    println!("K compiler prototype\n\nUsage:\n  k lex <file.k>          Print the source tokens\n  k parse <file.k>        Print the parsed AST\n  k check <file.k>        Check names and types\n  k emit <file.k>         Emit x86-64 System V assembly\n  k compile <in.k> <out.s> Compile source to an assembly file\n  k help                  Show this help\n");
+    println!("K compiler prototype\n\nUsage:\n  k lex <file.k>                         Print the source tokens\n  k parse <file.k>                       Print the parsed AST\n  k check <file.k>                       Check names and types\n  k emit <file.k>                        Emit default-target assembly\n  k compile <in.k> <out.s> [target]      Compile for a target\n  k help                                 Show this help\n\nTargets:\n  x86_64-unknown-linux-gnu (default)\n  x86_64-krumpyos\n  aarch64-krumpyos (not implemented)\n");
 }

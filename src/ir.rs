@@ -37,21 +37,56 @@ pub struct Local {
 pub enum Instruction {
     Constant(i64),
     StringLiteral(Vec<u8>),
-    LoadLocal { name: String, ty: IrType },
-    StoreLocal { name: String, ty: IrType },
-    AddressLocal { name: String, ty: IrType },
-    FieldAddress { offset: i64, ty: IrType },
-    Load { ty: IrType },
-    Store { ty: IrType },
-    Scale { bytes: i64 },
-    Unary { operator: UnaryOperator, ty: IrType },
-    Binary { operator: BinaryOperator, ty: IrType },
-    Call { name: String, arguments: usize, ty: IrType },
+    LoadLocal {
+        name: String,
+        ty: IrType,
+    },
+    StoreLocal {
+        name: String,
+        ty: IrType,
+    },
+    AddressLocal {
+        name: String,
+        ty: IrType,
+    },
+    FieldAddress {
+        offset: i64,
+        ty: IrType,
+    },
+    Load {
+        ty: IrType,
+    },
+    Store {
+        ty: IrType,
+    },
+    Scale {
+        bytes: i64,
+    },
+    Unary {
+        operator: UnaryOperator,
+        ty: IrType,
+    },
+    Binary {
+        operator: BinaryOperator,
+        ty: IrType,
+    },
+    Call {
+        name: String,
+        arguments: usize,
+        ty: IrType,
+    },
     PrintString(Vec<u8>),
     Pop,
-    Branch { then_block: usize, else_block: usize },
-    Jump { target: usize },
-    Return { has_value: bool },
+    Branch {
+        then_block: usize,
+        else_block: usize,
+    },
+    Jump {
+        target: usize,
+    },
+    Return {
+        has_value: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,7 +155,13 @@ fn build_struct_layouts(program: &Program) -> BTreeMap<String, StructLayout> {
                     (field.name.clone(), layout)
                 })
                 .collect();
-            (definition.name.clone(), StructLayout { size: offset, fields })
+            (
+                definition.name.clone(),
+                StructLayout {
+                    size: offset,
+                    fields,
+                },
+            )
         })
         .collect()
 }
@@ -159,7 +200,9 @@ fn fold_block(block: &mut Block) {
                     fold_block(else_branch);
                 }
             }
-            Statement::While { condition, body, .. } => {
+            Statement::While {
+                condition, body, ..
+            } => {
                 fold_expression(condition);
                 fold_block(body);
             }
@@ -178,15 +221,22 @@ fn fold_expression(expression: &mut Expression) {
         } => {
             fold_expression(left);
             fold_expression(right);
-            let (Expression::Integer { value: left_value, .. },
-                Expression::Integer { value: right_value, .. }) =
-                (left.as_ref(), right.as_ref()) else {
-                    return;
-                };
+            let (
+                Expression::Integer {
+                    value: left_value, ..
+                },
+                Expression::Integer {
+                    value: right_value, ..
+                },
+            ) = (left.as_ref(), right.as_ref())
+            else {
+                return;
+            };
             let (Ok(left_value), Ok(right_value)) =
-                (left_value.parse::<i64>(), right_value.parse::<i64>()) else {
-                    return;
-                };
+                (left_value.parse::<i64>(), right_value.parse::<i64>())
+            else {
+                return;
+            };
             let value = match operator {
                 BinaryOperator::Add => Some(left_value + right_value),
                 BinaryOperator::Subtract => Some(left_value - right_value),
@@ -218,7 +268,8 @@ fn fold_expression(expression: &mut Expression) {
         | Expression::Character { .. }
         | Expression::String { .. }
         | Expression::Boolean { .. }
-        | Expression::Name { .. } | Expression::Field { .. } => {}
+        | Expression::Name { .. }
+        | Expression::Field { .. } => {}
     }
 }
 
@@ -340,7 +391,14 @@ fn prune_unreachable_blocks(function: &mut IrFunction) {
         if function.blocks[id]
             .instructions
             .last()
-            .is_some_and(|instruction| !matches!(instruction, Instruction::Branch { .. } | Instruction::Jump { .. } | Instruction::Return { .. }))
+            .is_some_and(|instruction| {
+                !matches!(
+                    instruction,
+                    Instruction::Branch { .. }
+                        | Instruction::Jump { .. }
+                        | Instruction::Return { .. }
+                )
+            })
             && id + 1 < function.blocks.len()
         {
             pending.push_back(id + 1);
@@ -383,7 +441,7 @@ fn collect_locals(block: &Block, locals: &mut Vec<Local>) {
             }),
             Statement::Let { name, value, .. } => locals.push(Local {
                 name: name.clone(),
-                ty: expression_type(value),
+                ty: expression_type_with_locals(value, locals),
             }),
             Statement::If {
                 then_branch,
@@ -395,13 +453,34 @@ fn collect_locals(block: &Block, locals: &mut Vec<Local>) {
                     collect_locals(else_branch, locals);
                 }
             }
-            Statement::While { body, .. } | Statement::Block(body) => {
-                collect_locals(body, locals)
-            }
-            Statement::Assign { .. }
-            | Statement::Return { .. }
-            | Statement::Expression { .. } => {}
+            Statement::While { body, .. } | Statement::Block(body) => collect_locals(body, locals),
+            Statement::Assign { .. } | Statement::Return { .. } | Statement::Expression { .. } => {}
         }
+    }
+}
+
+fn expression_type_with_locals(expression: &Expression, locals: &[Local]) -> IrType {
+    match expression {
+        Expression::Name { value, .. } => locals
+            .iter()
+            .find(|local| local.name == *value)
+            .map(|local| local.ty.clone())
+            .unwrap_or(IrType::Int),
+        Expression::Unary {
+            operator: UnaryOperator::Dereference,
+            operand,
+            ..
+        } => match expression_type_with_locals(operand, locals) {
+            IrType::Pointer(inner) => *inner,
+            _ => IrType::Int,
+        },
+        Expression::Index { base, .. } => match expression_type_with_locals(base, locals) {
+            IrType::Pointer(inner) => *inner,
+            _ => IrType::Int,
+        },
+        Expression::Unary { operand, .. } => expression_type_with_locals(operand, locals),
+        Expression::Binary { left, .. } => expression_type_with_locals(left, locals),
+        _ => expression_type(expression),
     }
 }
 
@@ -440,7 +519,7 @@ impl FunctionBuilder<'_> {
                 self.push(
                     id,
                     Instruction::Store {
-                        ty: expression_type(value),
+                        ty: self.expression_type(value),
                     },
                 );
             }
@@ -499,7 +578,12 @@ impl FunctionBuilder<'_> {
                 let condition_id = self.new_block();
                 let body_id = self.new_block();
                 let end_id = self.new_block();
-                self.push(id, Instruction::Jump { target: condition_id });
+                self.push(
+                    id,
+                    Instruction::Jump {
+                        target: condition_id,
+                    },
+                );
                 self.expression(condition_id, condition);
                 self.push(
                     condition_id,
@@ -509,7 +593,12 @@ impl FunctionBuilder<'_> {
                     },
                 );
                 self.block(body_id, body);
-                self.push(body_id, Instruction::Jump { target: condition_id });
+                self.push(
+                    body_id,
+                    Instruction::Jump {
+                        target: condition_id,
+                    },
+                );
                 return end_id;
             }
         }
@@ -526,9 +615,9 @@ impl FunctionBuilder<'_> {
             Expression::Character { value, .. } => {
                 self.push(id, Instruction::Constant(i64::from(*value)));
             }
-                Expression::String { value, .. } => {
-                    self.push(id, Instruction::StringLiteral(value.clone()));
-                }
+            Expression::String { value, .. } => {
+                self.push(id, Instruction::StringLiteral(value.clone()));
+            }
             Expression::Boolean { value, .. } => {
                 self.push(id, Instruction::Constant(i64::from(*value)));
             }
@@ -554,7 +643,7 @@ impl FunctionBuilder<'_> {
                         id,
                         Instruction::Unary {
                             operator: *operator,
-                            ty: expression_type(expression),
+                            ty: self.expression_type(expression),
                         },
                     );
                 }
@@ -571,14 +660,12 @@ impl FunctionBuilder<'_> {
                     id,
                     Instruction::Binary {
                         operator: *operator,
-                        ty: expression_type(expression),
+                        ty: self.expression_type(expression),
                     },
                 );
             }
             Expression::Call {
-                callee,
-                arguments,
-                ..
+                callee, arguments, ..
             } => {
                 if let Expression::Name { value, .. } = callee.as_ref() {
                     if value == "print" && arguments.len() == 1 {
@@ -597,7 +684,7 @@ impl FunctionBuilder<'_> {
                         Instruction::Call {
                             name: value.clone(),
                             arguments: arguments.len(),
-                            ty: expression_type(expression),
+                            ty: self.expression_type(expression),
                         },
                     );
                 }
@@ -605,26 +692,34 @@ impl FunctionBuilder<'_> {
             Expression::Index { base, index, .. } => {
                 self.expression(id, base);
                 self.expression(id, index);
-                self.push(id, Instruction::Scale {
-                    bytes: pointee_size(&self.expression_type(base)),
-                });
+                self.push(
+                    id,
+                    Instruction::Scale {
+                        bytes: pointee_size(&self.expression_type(base)),
+                    },
+                );
                 self.push(
                     id,
                     Instruction::Binary {
                         operator: BinaryOperator::Add,
-                        ty: IrType::Pointer(Box::new(expression_type(expression))),
+                        ty: IrType::Pointer(Box::new(self.expression_type(expression))),
                     },
                 );
                 self.push(
                     id,
                     Instruction::Load {
-                        ty: expression_type(expression),
+                        ty: self.expression_type(expression),
                     },
                 );
             }
             Expression::Field { base, .. } => {
                 self.field_address(id, base, expression);
-                self.push(id, Instruction::Load { ty: expression_type(expression) });
+                self.push(
+                    id,
+                    Instruction::Load {
+                        ty: self.expression_type(expression),
+                    },
+                );
             }
         }
     }
@@ -650,14 +745,17 @@ impl FunctionBuilder<'_> {
             Expression::Index { base, index, .. } => {
                 self.expression(id, base);
                 self.expression(id, index);
-                self.push(id, Instruction::Scale {
-                    bytes: pointee_size(&self.expression_type(base)),
-                });
+                self.push(
+                    id,
+                    Instruction::Scale {
+                        bytes: pointee_size(&self.expression_type(base)),
+                    },
+                );
                 self.push(
                     id,
                     Instruction::Binary {
                         operator: BinaryOperator::Add,
-                        ty: IrType::Pointer(Box::new(expression_type(expression))),
+                        ty: IrType::Pointer(Box::new(self.expression_type(expression))),
                     },
                 );
             }
@@ -687,7 +785,9 @@ impl FunctionBuilder<'_> {
             .get(&struct_name)
             .and_then(|layout| layout.fields.get(field_name))
             .cloned()
-        else { return };
+        else {
+            return;
+        };
         match self.expression_type(base) {
             IrType::Struct(_) => self.lvalue(id, base),
             _ => self.expression(id, base),
@@ -727,6 +827,20 @@ impl FunctionBuilder<'_> {
                     .map(|field| field.ty.clone())
                     .unwrap_or(IrType::Int)
             }
+            Expression::Index { base, .. } => match self.expression_type(base) {
+                IrType::Pointer(inner) => *inner,
+                _ => IrType::Int,
+            },
+            Expression::Unary {
+                operator: UnaryOperator::Dereference,
+                operand,
+                ..
+            } => match self.expression_type(operand) {
+                IrType::Pointer(inner) => *inner,
+                _ => IrType::Int,
+            },
+            Expression::Unary { operand, .. } => self.expression_type(operand),
+            Expression::Binary { left, .. } => self.expression_type(left),
             _ => expression_type(expression),
         }
     }
@@ -768,7 +882,9 @@ fn expression_type(expression: &Expression) -> IrType {
         } => IrType::Pointer(Box::new(expression_type(operand))),
         Expression::Unary { operand, .. } => expression_type(operand),
         Expression::Binary { left, .. } => expression_type(left),
-        Expression::Call { .. } | Expression::Index { .. } | Expression::Field { .. } => IrType::Int,
+        Expression::Call { .. } | Expression::Index { .. } | Expression::Field { .. } => {
+            IrType::Int
+        }
     }
 }
 
@@ -843,10 +959,9 @@ mod tests {
         let program = parse("int main() { return 2 + 3 * 4; }").unwrap();
         let ir = lower(&program).unwrap();
         let instructions = &ir.functions["main"].blocks[0].instructions;
-        assert!(instructions.iter().any(|instruction| matches!(
-            instruction,
-            Instruction::Constant(14)
-        )));
+        assert!(instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Constant(14))));
         assert!(!instructions.iter().any(|instruction| matches!(
             instruction,
             Instruction::Binary {

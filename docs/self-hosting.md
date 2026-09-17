@@ -45,7 +45,17 @@ argument-list arena.
 The first backend slice is now present as caller-owned typed IR lowering.
 `IrStorage` records typed instructions, function ranges, and basic-block
 ranges. Nested blocks, `if`, and `while` lower to explicit branch and jump
-records; target-specific assembly remains a separate stage.
+records. `ir_validate` now checks those ranges and control-flow references
+before target-specific assembly consumes the IR; target-specific assembly
+remains a separate stage.
+
+The first K-written backend slice is in `compiler/backend.k`. It owns a
+caller-provided character buffer and emits deterministic x86-64 assembly
+headers, function labels, prologues, and a return-zero epilogue. Instruction
+selection now dispatches unary negate, arithmetic, and return IR records;
+integer formatting and typed local stack-slot load/store emitters are now
+available. Calls, pointer memory, and control-flow label emission remain the
+next backend work.
 
 The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the
@@ -68,6 +78,11 @@ Add the remaining compiler pipeline in small deterministic boundaries:
 The K backend must reproduce the Rust backend for the conformance fixtures.
 Target-specific operations such as the Linux `print` intrinsic stay behind a
 documented backend boundary.
+
+Target selection is part of the compiler contract. The first self-hosted
+release must reproduce the x86-64 KrumpyOS target before the AArch64 backend is
+added; unsupported targets must fail explicitly rather than silently emitting
+the wrong machine code.
 
 ## Stage 4: First self-hosted compiler
 

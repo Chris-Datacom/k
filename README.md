@@ -20,6 +20,7 @@ cargo run -- parse examples/hello.k
 cargo run -- check examples/hello.k
 cargo run -- emit examples/hello.k
 cargo run -- compile examples/hello.k target/hello.s
+cargo run -- compile examples/hello.k target/hello.s x86_64-krumpyos
 ```
 
 The command-line tool currently exposes one diagnostic command:
@@ -31,6 +32,15 @@ k check <file.k>
 k emit <file.k>
 k compile <input.k> <output.s>
 ```
+
+Target names are explicit at the compile boundary. The implemented targets
+currently share the x86-64 backend:
+
+- `x86_64-unknown-linux-gnu` (default)
+- `x86_64-krumpyos`
+
+`aarch64-krumpyos` is reserved for the upcoming ARM64 backend and fails
+explicitly until that backend and its ABI are implemented.
 
 ## Design direction
 

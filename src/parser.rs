@@ -249,7 +249,10 @@ impl Parser {
             fields.push(StructField {
                 name: field_name,
                 ty,
-                span: Span { start: field_start, end: field_span.end },
+                span: Span {
+                    start: field_start,
+                    end: field_span.end,
+                },
             });
         }
         let end = self.expect(TokenKind::RightBrace)?.end;
@@ -345,7 +348,10 @@ impl Parser {
                 Ok(Statement::Declare {
                     ty,
                     name,
-                    span: Span { start, end: name_span.end.max(end) },
+                    span: Span {
+                        start,
+                        end: name_span.end.max(end),
+                    },
                 })
             }
             TokenKind::Let => {
@@ -385,10 +391,7 @@ impl Parser {
                     return Ok(Statement::Assign {
                         target: expression,
                         value,
-                        span: Span {
-                            start,
-                            end,
-                        },
+                        span: Span { start, end },
                     });
                 }
                 let span = self.expect(TokenKind::Semicolon)?.end;
@@ -501,7 +504,10 @@ impl Parser {
                 let operand = self.parse_prefix_expression()?;
                 Expression::Unary {
                     operator: UnaryOperator::Dereference,
-                    span: Span { start, end: operand.span().end },
+                    span: Span {
+                        start,
+                        end: operand.span().end,
+                    },
                     operand: Box::new(operand),
                 }
             }
@@ -530,13 +536,19 @@ impl Parser {
         }
     }
 
-    fn parse_postfix_expression(&mut self, mut expression: Expression) -> Result<Expression, ParseError> {
+    fn parse_postfix_expression(
+        &mut self,
+        mut expression: Expression,
+    ) -> Result<Expression, ParseError> {
         loop {
             if self.consume(TokenKind::LeftBracket) {
                 let index = self.parse_expression()?;
                 let end = self.expect(TokenKind::RightBracket)?.end;
                 expression = Expression::Index {
-                    span: Span { start: expression.span().start, end },
+                    span: Span {
+                        start: expression.span().start,
+                        end,
+                    },
                     base: Box::new(expression),
                     index: Box::new(index),
                 };
@@ -548,7 +560,10 @@ impl Parser {
                 expression = Expression::Field {
                     base: Box::new(expression),
                     field,
-                    span: Span { start, end: field_span.end },
+                    span: Span {
+                        start,
+                        end: field_span.end,
+                    },
                 };
                 continue;
             }
@@ -711,7 +726,10 @@ mod tests {
     #[test]
     fn parses_assignment_and_character_values() {
         let program = parse("char main() { let value = 'K'; value = 'L'; return value; }").unwrap();
-        assert!(matches!(program.functions[0].body.statements[1], Statement::Assign { .. }));
+        assert!(matches!(
+            program.functions[0].body.statements[1],
+            Statement::Assign { .. }
+        ));
         assert!(matches!(
             program.functions[0].body.statements[0],
             Statement::Let {
@@ -724,7 +742,10 @@ mod tests {
     #[test]
     fn parses_pointer_types_and_indexing() {
         let program = parse("int read(int* ptr) { return ptr[1]; }").unwrap();
-        assert!(matches!(program.functions[0].parameters[0].ty, Type::Pointer(_)));
+        assert!(matches!(
+            program.functions[0].parameters[0].ty,
+            Type::Pointer(_)
+        ));
         assert!(matches!(
             program.functions[0].body.statements[0],
             Statement::Return {

@@ -16,6 +16,13 @@ source text
 
 The command-line binary in `src/main.rs` handles files, arguments, and human-readable output. The compiler library in `src/lib.rs` owns language behavior. Keeping those responsibilities separate is important for self-hosting: the K implementation can replace the host shell while reusing the same pipeline concepts.
 
+## Target boundary
+
+Target selection is explicit at the driver boundary. `x86_64-unknown-linux-gnu`
+and `x86_64-krumpyos` currently use the implemented x86-64 backend. The
+`aarch64-krumpyos` target is reserved but rejected before code generation until
+its calling convention, object format, and backend are implemented.
+
 ## Planned modules
 
 - `lexer`: converts source bytes into tokens and reports spans.
@@ -28,6 +35,9 @@ The command-line binary in `src/main.rs` handles files, arguments, and human-rea
 - `codegen`: emits deterministic x86-64 System V assembly for the first
   supported target. It has no runtime or libc dependency, which is the first
   step toward a freestanding kernel toolchain.
+- Fixed-width loads and stores use the IR type to select byte, word, dword,
+  or qword operations; narrow values are extended into the virtual stack
+  representation before arithmetic or calls.
 - String literals are emitted into `.rodata`; indexed pointer arithmetic uses
   the pointee size recorded by the typed IR; struct field access lowers to
   address adjustment followed by the normal load/store instructions.

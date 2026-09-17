@@ -5,6 +5,16 @@
   "version": "0.1.0",
   "publisher": "commandercortex",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CommanderCortex/k.git"
+  },
+  "files": [
+    "language-configuration.json",
+    "package.json",
+    "README.md",
+    "syntaxes"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },

@@ -32,9 +32,18 @@ broken K bootstrap can be recovered without circular dependencies.
   ranges, lowering constants, names, unary/binary expressions, calls, lets,
   assignments, returns, and expression statements with explicit capacity
   errors. Basic-block storage now lowers nested blocks, `if`, and `while`
-  into explicit branch and jump records.
+  into explicit branch and jump records. `ir_validate` checks stored ranges,
+  block identities, branch/jump targets, instruction kinds, and call/return
+  metadata before a future K backend consumes the IR.
 - `hello.k`: executable smoke test using the freestanding Linux `print`
   intrinsic.
+- `backend.k`: the first caller-owned x86-64 assembly output boundary. It
+  emits deterministic headers, function labels, prologues, and a return-zero
+  epilogue without allocation or hidden global state. Its initial instruction
+  dispatcher handles unary negate, arithmetic, and return IR records and
+  rejects unsupported instruction kinds explicitly. Integer formatting and
+  typed local stack-slot load/store emitters now use caller-owned scratch
+  storage.
 - `sources.txt`: deterministic list of K compiler sources checked by the
   bootstrap scripts. It includes the lexer, parser, and hello-world smoke
   test.

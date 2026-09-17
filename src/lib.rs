@@ -13,9 +13,10 @@
 //! The initial milestones keep each stage useful and testable, giving the
 //! language a concrete foundation before syntax and code generation grow.
 
+pub mod codegen;
+pub mod driver;
+pub mod ir;
 pub mod lexer;
 pub mod parser;
 pub mod sema;
-pub mod codegen;
-pub mod ir;
-pub mod driver;
+pub mod target;

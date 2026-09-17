@@ -128,7 +128,10 @@ impl<'program> Checker<'program> {
     fn collect_functions(&mut self) {
         for function in &self.program.functions {
             if self.functions.contains_key(&function.name) {
-                self.error(function.span, format!("duplicate function `{}`", function.name));
+                self.error(
+                    function.span,
+                    format!("duplicate function `{}`", function.name),
+                );
                 continue;
             }
 
@@ -149,12 +152,18 @@ impl<'program> Checker<'program> {
     fn collect_structs(&mut self) {
         for definition in &self.program.structs {
             if self.structs.contains_key(&definition.name) {
-                self.error(definition.span, format!("duplicate struct `{}`", definition.name));
+                self.error(
+                    definition.span,
+                    format!("duplicate struct `{}`", definition.name),
+                );
                 continue;
             }
             let mut fields = HashMap::new();
             for field in &definition.fields {
-                if fields.insert(field.name.clone(), field.ty.clone()).is_some() {
+                if fields
+                    .insert(field.name.clone(), field.ty.clone())
+                    .is_some()
+                {
                     self.error(field.span, format!("duplicate field `{}`", field.name));
                 }
             }
@@ -165,7 +174,11 @@ impl<'program> Checker<'program> {
     fn check_function(&mut self, function: &Function) {
         self.push_scope();
         for parameter in &function.parameters {
-            self.declare(parameter.name.clone(), ValueType::from_type(&parameter.ty), parameter.span);
+            self.declare(
+                parameter.name.clone(),
+                ValueType::from_type(&parameter.ty),
+                parameter.span,
+            );
         }
         self.check_block(&function.body, &function.return_type);
         self.pop_scope();
@@ -186,7 +199,11 @@ impl<'program> Checker<'program> {
                 let value_type = self.check_expression(value);
                 self.declare(name.clone(), value_type, *span);
             }
-            Statement::Assign { target, value, span } => {
+            Statement::Assign {
+                target,
+                value,
+                span,
+            } => {
                 let expected = self.check_lvalue(target);
                 let actual = self.check_expression(value);
                 self.require_same(&expected, &actual, *span, "assignment");
@@ -197,7 +214,10 @@ impl<'program> Checker<'program> {
                     let expected = ValueType::from_type(return_type);
                     self.require_same(&expected, &actual, *span, "return value");
                 }
-                None if *return_type != Type::Void => self.error(*span, format!("expected a {} return value", type_name(return_type))),
+                None if *return_type != Type::Void => self.error(
+                    *span,
+                    format!("expected a {} return value", type_name(return_type)),
+                ),
                 None => {}
             },
             Statement::If {
@@ -262,7 +282,10 @@ impl<'program> Checker<'program> {
                         ) {
                             operand_type
                         } else {
-                            self.error(*span, format!("cannot negate {}", operand_type.display_name()));
+                            self.error(
+                                *span,
+                                format!("cannot negate {}", operand_type.display_name()),
+                            );
                             ValueType::Invalid
                         }
                     }
@@ -277,10 +300,13 @@ impl<'program> Checker<'program> {
                         ValueType::Pointer(inner) => *inner,
                         ValueType::Invalid => ValueType::Invalid,
                         other => {
-                            self.error(*span, format!("cannot dereference {}", other.display_name()));
+                            self.error(
+                                *span,
+                                format!("cannot dereference {}", other.display_name()),
+                            );
                             ValueType::Invalid
                         }
-                    }
+                    },
                 }
             }
             Expression::Binary {
@@ -341,11 +367,17 @@ impl<'program> Checker<'program> {
     fn check_lvalue(&mut self, expression: &Expression) -> ValueType {
         match expression {
             Expression::Name { value, span } => self.resolve_name(value, *span),
-            Expression::Unary { operator: UnaryOperator::Dereference, .. }
+            Expression::Unary {
+                operator: UnaryOperator::Dereference,
+                ..
+            }
             | Expression::Index { .. } => self.check_expression(expression),
             Expression::Field { .. } => self.check_expression(expression),
             _ => {
-                self.error(expression.span(), "assignment target must be a variable or memory location".to_owned());
+                self.error(
+                    expression.span(),
+                    "assignment target must be a variable or memory location".to_owned(),
+                );
                 ValueType::Invalid
             }
         }
@@ -439,7 +471,11 @@ impl<'program> Checker<'program> {
         if arguments.len() != parameters.len() {
             self.error(
                 span,
-                format!("expected {} arguments, found {}", parameters.len(), arguments.len()),
+                format!(
+                    "expected {} arguments, found {}",
+                    parameters.len(),
+                    arguments.len()
+                ),
             );
         }
         for (argument, expected) in arguments.iter().zip(parameters.iter()) {
@@ -475,10 +511,10 @@ impl<'program> Checker<'program> {
 
     fn declare(&mut self, name: String, value_type: ValueType, span: Span) {
         let scope = self.scopes.last_mut().expect("checker always has a scope");
-        if scope.contains_key(&name) {
-            self.error(span, format!("duplicate declaration `{name}`"));
+        if let std::collections::hash_map::Entry::Vacant(entry) = scope.entry(name.clone()) {
+            entry.insert(value_type);
         } else {
-            scope.insert(name, value_type);
+            self.error(span, format!("duplicate declaration `{name}`"));
         }
     }
 
@@ -486,7 +522,13 @@ impl<'program> Checker<'program> {
         self.require_same(&ValueType::Bool, &actual, span, "condition");
     }
 
-    fn require_same(&mut self, expected: &ValueType, actual: &ValueType, span: Span, context: &str) {
+    fn require_same(
+        &mut self,
+        expected: &ValueType,
+        actual: &ValueType,
+        span: Span,
+        context: &str,
+    ) {
         if *actual != ValueType::Invalid && expected != actual {
             self.error(
                 span,
@@ -562,7 +604,9 @@ mod tests {
     fn checks_assignment_types() {
         let program = parse("int main() { let value = 1; value = true; return value; }").unwrap();
         let errors = check(&program).unwrap_err();
-        assert!(errors.iter().any(|error| error.message.contains("assignment requires int")));
+        assert!(errors
+            .iter()
+            .any(|error| error.message.contains("assignment requires int")));
     }
 
     #[test]
@@ -595,6 +639,8 @@ mod tests {
             "struct Token { int kind; } int read(struct Token* token) { return token.missing; }",
         )
         .unwrap();
-        assert!(check(&bad).unwrap_err()[0].message.contains("unknown field"));
+        assert!(check(&bad).unwrap_err()[0]
+            .message
+            .contains("unknown field"));
     }
 }

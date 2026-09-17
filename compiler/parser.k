@@ -3225,3 +3225,149 @@ int ir_lower_program(
     }
     return 1;
 }
+
+int ir_valid_instruction_kind(int kind) {
+    if (kind < 1) {
+        return 0;
+    }
+    if (kind > 13) {
+        return 0;
+    }
+    return 1;
+}
+
+int ir_validate_block(struct IrStorage* ir, int block_index) {
+    if (block_index < 0) {
+        ir.error = 8;
+        return 0;
+    }
+    if (block_index >= ir.block_count) {
+        ir.error = 8;
+        return 0;
+    }
+    let block = &ir.blocks[block_index];
+    if (block.id != block_index) {
+        ir.error = 8;
+        return 0;
+    }
+    if (block.start < 0) {
+        ir.error = 8;
+        return 0;
+    }
+    if (block.count < 0) {
+        ir.error = 8;
+        return 0;
+    }
+    if (block.start + block.count > ir.instruction_count) {
+        ir.error = 8;
+        return 0;
+    }
+    let instruction_index = block.start;
+    let end = block.start + block.count;
+    while (instruction_index < end) {
+        let instruction = &ir.instructions[instruction_index];
+        if (ir_valid_instruction_kind(instruction.kind) == 0) {
+            ir.error = 8;
+            return 0;
+        }
+        if (instruction.kind == 12) {
+            if (ir_validate_block(ir, instruction.left) == 0) {
+                return 0;
+            }
+            if (ir_validate_block(ir, instruction.right) == 0) {
+                return 0;
+            }
+        } else {
+            if (instruction.kind == 13) {
+                if (ir_validate_block(ir, instruction.left) == 0) {
+                    return 0;
+                }
+            } else {
+                if (instruction.kind == 7) {
+                    if (instruction.extra < 0) {
+                        ir.error = 8;
+                        return 0;
+                    }
+                } else {
+                    if (instruction.kind == 11) {
+                        if (instruction.extra < 0) {
+                            ir.error = 8;
+                            return 0;
+                        }
+                        if (instruction.extra > 1) {
+                            ir.error = 8;
+                            return 0;
+                        }
+                    }
+                }
+            }
+        }
+        instruction_index = instruction_index + 1;
+    }
+    return 1;
+}
+
+int ir_validate(struct IrStorage* ir) {
+    if (ir.instruction_count < 0) {
+        ir.error = 8;
+        return 0;
+    }
+    if (ir.instruction_count > ir.instruction_capacity) {
+        ir.error = 8;
+        return 0;
+    }
+    if (ir.function_count < 0) {
+        ir.error = 8;
+        return 0;
+    }
+    if (ir.function_count > ir.function_capacity) {
+        ir.error = 8;
+        return 0;
+    }
+    if (ir.block_count < 0) {
+        ir.error = 8;
+        return 0;
+    }
+    if (ir.block_count > ir.block_capacity) {
+        ir.error = 8;
+        return 0;
+    }
+    let function_index = 0;
+    while (function_index < ir.function_count) {
+        let function = &ir.functions[function_index];
+        if (function.start < 0) {
+            ir.error = 8;
+            return 0;
+        }
+        if (function.count < 0) {
+            ir.error = 8;
+            return 0;
+        }
+        if (function.start + function.count > ir.instruction_count) {
+            ir.error = 8;
+            return 0;
+        }
+        if (function.block_start < 0) {
+            ir.error = 8;
+            return 0;
+        }
+        if (function.block_count < 0) {
+            ir.error = 8;
+            return 0;
+        }
+        if (function.block_start + function.block_count > ir.block_count) {
+            ir.error = 8;
+            return 0;
+        }
+        let block_index = function.block_start;
+        let block_end = function.block_start + function.block_count;
+        while (block_index < block_end) {
+            if (ir_validate_block(ir, block_index) == 0) {
+                return 0;
+            }
+            block_index = block_index + 1;
+        }
+        function_index = function_index + 1;
+    }
+    return 1;
+}

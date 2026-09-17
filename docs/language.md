@@ -81,10 +81,11 @@ uninitialized.
 | `bool` | `true` or `false` |
 | `void` | no value |
 
-The fixed-width names are now accepted by the lexer, parser, semantic checker,
-and IR layout calculations. Code generation still uses the prototype
-word-oriented load/store paths, so programs requiring exact narrow arithmetic
-or ABI-width behavior are not yet supported.
+The fixed-width names are accepted by the lexer, parser, semantic checker, IR,
+and x86-64 backend memory operations. Loads and stores use the declared width
+and extend values into the compiler's virtual 64-bit stack representation.
+Exact-width arithmetic, overflow behavior, alignment, and ABI-width argument
+rules remain target work and must be specified before these types are stable.
 
 `int` and `char` remain prototype aliases while their final meaning is decided.
 They must not be treated as portable fixed-width types.

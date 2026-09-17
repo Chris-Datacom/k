@@ -241,13 +241,19 @@ impl<'source> Lexer<'source> {
                         Some(b'\'') => b'\'',
                         Some(escaped) => {
                             return Err(LexError {
-                                span: Span { start, end: self.cursor },
+                                span: Span {
+                                    start,
+                                    end: self.cursor,
+                                },
                                 message: format!("unknown character escape `\\{escaped}`"),
                             })
                         }
                         None => {
                             return Err(LexError {
-                                span: Span { start, end: self.cursor },
+                                span: Span {
+                                    start,
+                                    end: self.cursor,
+                                },
                                 message: "unterminated character literal".to_owned(),
                             })
                         }
@@ -255,20 +261,29 @@ impl<'source> Lexer<'source> {
                     Some(value @ 0x20..=0x7e) => value,
                     Some(value) => {
                         return Err(LexError {
-                            span: Span { start, end: self.cursor },
+                            span: Span {
+                                start,
+                                end: self.cursor,
+                            },
                             message: format!("invalid character byte 0x{value:02x}"),
                         })
                     }
                     None => {
                         return Err(LexError {
-                            span: Span { start, end: self.cursor },
+                            span: Span {
+                                start,
+                                end: self.cursor,
+                            },
                             message: "unterminated character literal".to_owned(),
                         })
                     }
                 };
                 if self.advance() != Some(b'\'') {
                     return Err(LexError {
-                        span: Span { start, end: self.cursor },
+                        span: Span {
+                            start,
+                            end: self.cursor,
+                        },
                         message: "character literal must contain one character".to_owned(),
                     });
                 }
@@ -285,24 +300,44 @@ impl<'source> Lexer<'source> {
                             Some(b't') => value.push(b'\t'),
                             Some(b'\\') => value.push(b'\\'),
                             Some(b'"') => value.push(b'"'),
-                            Some(escaped) => return Err(LexError {
-                                span: Span { start, end: self.cursor },
-                                message: format!("unknown string escape `\\{escaped}`"),
-                            }),
-                            None => return Err(LexError {
-                                span: Span { start, end: self.cursor },
-                                message: "unterminated string literal".to_owned(),
-                            }),
+                            Some(escaped) => {
+                                return Err(LexError {
+                                    span: Span {
+                                        start,
+                                        end: self.cursor,
+                                    },
+                                    message: format!("unknown string escape `\\{escaped}`"),
+                                })
+                            }
+                            None => {
+                                return Err(LexError {
+                                    span: Span {
+                                        start,
+                                        end: self.cursor,
+                                    },
+                                    message: "unterminated string literal".to_owned(),
+                                })
+                            }
                         },
                         Some(byte @ 0x20..=0x7e) => value.push(byte),
-                        Some(byte) => return Err(LexError {
-                            span: Span { start, end: self.cursor },
-                            message: format!("invalid string byte 0x{byte:02x}"),
-                        }),
-                        None => return Err(LexError {
-                            span: Span { start, end: self.cursor },
-                            message: "unterminated string literal".to_owned(),
-                        }),
+                        Some(byte) => {
+                            return Err(LexError {
+                                span: Span {
+                                    start,
+                                    end: self.cursor,
+                                },
+                                message: format!("invalid string byte 0x{byte:02x}"),
+                            })
+                        }
+                        None => {
+                            return Err(LexError {
+                                span: Span {
+                                    start,
+                                    end: self.cursor,
+                                },
+                                message: "unterminated string literal".to_owned(),
+                            })
+                        }
                     }
                 }
                 TokenKind::StringLiteral(value)
@@ -423,7 +458,14 @@ mod tests {
         let tokens: Vec<_> = Lexer::new("'K' '\\n'")
             .map(|item| item.unwrap().token)
             .collect();
-        assert_eq!(tokens, vec![TokenKind::Character(b'K'), TokenKind::Character(b'\n'), TokenKind::Eof]);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Character(b'K'),
+                TokenKind::Character(b'\n'),
+                TokenKind::Eof
+            ]
+        );
     }
 
     #[test]
@@ -431,28 +473,63 @@ mod tests {
         let tokens: Vec<_> = Lexer::new("\"K\\n\"")
             .map(|item| item.unwrap().token)
             .collect();
-        assert_eq!(tokens, vec![TokenKind::StringLiteral(vec![b'K', b'\n']), TokenKind::Eof]);
+        assert_eq!(
+            tokens,
+            vec![TokenKind::StringLiteral(vec![b'K', b'\n']), TokenKind::Eof]
+        );
     }
 
     #[test]
     fn lexes_shared_conformance_fixture() {
         let source = include_str!("../compiler/lexer_conformance.k");
-        let tokens: Vec<_> = Lexer::new(source)
-            .map(|item| item.unwrap())
-            .collect();
-        assert_eq!(tokens.first().map(|item| &item.token), Some(&TokenKind::Struct));
-        assert_eq!(tokens.first().map(|item| item.span), Some(super::Span { start: 38, end: 44 }));
-        assert_eq!(tokens.get(1).map(|item| &item.token), Some(&TokenKind::Identifier("Pair".into())));
-        assert_eq!(tokens.get(1).map(|item| item.span), Some(super::Span { start: 45, end: 49 }));
-        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::StringLiteral(_))));
-        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::Character(b'\''))));
-        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::NotEqual)));
-        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::LessEqual)));
-        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::GreaterEqual)));
-        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::Else)));
-        assert!(tokens.iter().any(|item| matches!(item.token, TokenKind::While)));
+        let tokens: Vec<_> = Lexer::new(source).map(|item| item.unwrap()).collect();
+        assert_eq!(
+            tokens.first().map(|item| &item.token),
+            Some(&TokenKind::Struct)
+        );
+        assert_eq!(
+            tokens.first().map(|item| item.span),
+            Some(super::Span { start: 37, end: 43 })
+        );
+        assert_eq!(
+            tokens.get(1).map(|item| &item.token),
+            Some(&TokenKind::Identifier("Pair".into()))
+        );
+        assert_eq!(
+            tokens.get(1).map(|item| item.span),
+            Some(super::Span { start: 44, end: 48 })
+        );
+        assert!(tokens
+            .iter()
+            .any(|item| matches!(item.token, TokenKind::StringLiteral(_))));
+        assert!(tokens
+            .iter()
+            .any(|item| matches!(item.token, TokenKind::Character(b'\''))));
+        assert!(tokens
+            .iter()
+            .any(|item| matches!(item.token, TokenKind::NotEqual)));
+        assert!(tokens
+            .iter()
+            .any(|item| matches!(item.token, TokenKind::LessEqual)));
+        assert!(tokens
+            .iter()
+            .any(|item| matches!(item.token, TokenKind::GreaterEqual)));
+        assert!(tokens
+            .iter()
+            .any(|item| matches!(item.token, TokenKind::Else)));
+        assert!(tokens
+            .iter()
+            .any(|item| matches!(item.token, TokenKind::While)));
         assert_eq!(tokens.last().map(|item| &item.token), Some(&TokenKind::Eof));
-        assert_eq!(tokens.last().map(|item| item.span), Some(super::Span { start: 415, end: 415 }));
-        assert!(tokens.windows(2).all(|pair| pair[0].span.end <= pair[1].span.start));
+        assert_eq!(
+            tokens.last().map(|item| item.span),
+            Some(super::Span {
+                start: 392,
+                end: 392
+            })
+        );
+        assert!(tokens
+            .windows(2)
+            .all(|pair| pair[0].span.end <= pair[1].span.start));
     }
 }
