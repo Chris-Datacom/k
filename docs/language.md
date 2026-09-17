@@ -35,7 +35,15 @@ int main() {
 }
 ```
 
-The parser currently accepts function definitions with `void`, `int`, `char`, or pointer return types, pointer parameters, braced blocks, `let` declarations, assignments to variables or memory locations, `return`, `if`/`else`, `while`, expression statements, calls, character and string literals, unary `-`, `&`, and `*`, indexing, and binary arithmetic/comparison operators. String literals lower to static zero-terminated bytes and have type `char*`. Pointer indexing scales by the pointee size; bounds checks are intentionally absent.
+The parser currently accepts function definitions with `void`, `int`, `char`,
+the fixed-width names `u8`, `u16`, `u32`, `u64`, `i32`, `i64`, and `bool`, or
+pointer return types. It also accepts pointer parameters, braced blocks,
+`let` declarations, assignments to variables or memory locations, `return`,
+`if`/`else`, `while`, expression statements, calls, character and string
+literals, unary `-`, `&`, and `*`, indexing, and binary
+arithmetic/comparison operators. String literals lower to static zero-terminated
+bytes and have type `char*`. Pointer indexing scales by the pointee size;
+bounds checks are intentionally absent.
 
 The grammar remains provisional. Before syntax is stabilized, the compiler must answer: declaration forms, function types, arrays, pointer spelling, casts, modules, and whether `let` permits inference everywhere.
 
@@ -60,7 +68,7 @@ declaration such as `struct Token token;`; the compiler reserves the complete
 layout size in the function frame, and the declaration is initially
 uninitialized.
 
-## Planned primitive types
+## Primitive type status
 
 | Type | Intent |
 | --- | --- |
@@ -73,7 +81,13 @@ uninitialized.
 | `bool` | `true` or `false` |
 | `void` | no value |
 
-`int` and `char` are currently lexer keywords for exploring C-like syntax. Their final meaning must be fixed before the type checker is declared stable; machine-dependent aliases are a poor foundation for portable K programs.
+The fixed-width names are now accepted by the lexer, parser, semantic checker,
+and IR layout calculations. Code generation still uses the prototype
+word-oriented load/store paths, so programs requiring exact narrow arithmetic
+or ABI-width behavior are not yet supported.
+
+`int` and `char` remain prototype aliases while their final meaning is decided.
+They must not be treated as portable fixed-width types.
 
 ## Safety boundary
 

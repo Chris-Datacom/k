@@ -51,6 +51,11 @@ The completion gate for this stage is differential coverage: the Rust and K
 frontends must accept and reject the same conformance fixtures and report the
 same token boundaries.
 
+The machine-model prerequisite is in progress: fixed-width primitive names
+are recognized through the Rust frontend and typed IR layout. Exact-width
+operations, casts, overflow rules, and backend lowering must be specified
+before those types are used as a stable contract by the K-written compiler.
+
 ## Stage 3: K backend
 
 Add the remaining compiler pipeline in small deterministic boundaries:

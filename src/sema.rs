@@ -38,6 +38,12 @@ enum ValueType {
     Void,
     Int,
     Char,
+    U8,
+    U16,
+    U32,
+    U64,
+    I32,
+    I64,
     Bool,
     Pointer(Box<ValueType>),
     Struct(String),
@@ -54,6 +60,13 @@ impl ValueType {
             Type::Void => Self::Void,
             Type::Int => Self::Int,
             Type::Char => Self::Char,
+            Type::U8 => Self::U8,
+            Type::U16 => Self::U16,
+            Type::U32 => Self::U32,
+            Type::U64 => Self::U64,
+            Type::I32 => Self::I32,
+            Type::I64 => Self::I64,
+            Type::Bool => Self::Bool,
             Type::Pointer(inner) => Self::Pointer(Box::new(Self::from_type(inner))),
             Type::Struct(name) => Self::Struct(name.clone()),
         }
@@ -64,6 +77,12 @@ impl ValueType {
             Self::Int => "int",
             Self::Void => "void",
             Self::Char => "char",
+            Self::U8 => "u8",
+            Self::U16 => "u16",
+            Self::U32 => "u32",
+            Self::U64 => "u64",
+            Self::I32 => "i32",
+            Self::I64 => "i64",
             Self::Bool => "bool",
             Self::Pointer(_) => "pointer",
             Self::Struct(_) => "struct",
@@ -229,7 +248,18 @@ impl<'program> Checker<'program> {
                 let operand_type = self.check_expression(operand);
                 match operator {
                     UnaryOperator::Negate => {
-                        if matches!(operand_type, ValueType::Int | ValueType::Char | ValueType::Invalid) {
+                        if matches!(
+                            operand_type,
+                            ValueType::Int
+                                | ValueType::Char
+                                | ValueType::U8
+                                | ValueType::U16
+                                | ValueType::U32
+                                | ValueType::U64
+                                | ValueType::I32
+                                | ValueType::I64
+                                | ValueType::Invalid
+                        ) {
                             operand_type
                         } else {
                             self.error(*span, format!("cannot negate {}", operand_type.display_name()));
@@ -336,7 +366,19 @@ impl<'program> Checker<'program> {
             | BinaryOperator::Subtract
             | BinaryOperator::Multiply
             | BinaryOperator::Divide => {
-                if left != right || !matches!(left, ValueType::Int | ValueType::Char) {
+                if left != right
+                    || !matches!(
+                        left,
+                        ValueType::Int
+                            | ValueType::Char
+                            | ValueType::U8
+                            | ValueType::U16
+                            | ValueType::U32
+                            | ValueType::U64
+                            | ValueType::I32
+                            | ValueType::I64
+                    )
+                {
                     self.error(
                         span,
                         format!(
@@ -475,6 +517,13 @@ fn type_name(ty: &Type) -> &'static str {
         Type::Void => "void",
         Type::Int => "int",
         Type::Char => "char",
+        Type::U8 => "u8",
+        Type::U16 => "u16",
+        Type::U32 => "u32",
+        Type::U64 => "u64",
+        Type::I32 => "i32",
+        Type::I64 => "i64",
+        Type::Bool => "bool",
         Type::Pointer(_) => "pointer",
         Type::Struct(_) => "struct",
     }

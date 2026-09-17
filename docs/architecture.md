@@ -37,6 +37,6 @@ The command-line binary in `src/main.rs` handles files, arguments, and human-rea
 
 ## Design constraints
 
-The core should remain deterministic, testable without a filesystem, and suitable for a future freestanding build. Allocation may be used in the Rust bootstrap implementation, but compiler stages should not depend on hidden global state or host-specific behavior.
+The core should remain deterministic, testable without a filesystem, and suitable for a future freestanding build. Allocation may be used in the Rust bootstrap implementation, but compiler stages should not depend on hidden global state or host-specific behavior. Fixed-width primitive names are now part of the prototype type pipeline; their exact instruction selection remains a backend contract to be completed.
 
 Every stage should preserve enough source span information for diagnostics. Intermediate representations should be serializable or printable so the Rust compiler and future K compiler can be compared during bootstrap.

@@ -30,6 +30,9 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
 
 ## Unreleased
 
-The next milestone will expand the K-written lexer from single source-unit
-classification to a token-stream loop and source-slice access, then compare
-its output against the Rust reference lexer.
+- Added prototype fixed-width primitive type names: `u8`, `u16`, `u32`, `u64`,
+  `i32`, `i64`, and `bool`.
+- Carried fixed-width types through parsing, semantic analysis, and IR layout
+  sizing, with tests for primitive struct field sizes.
+- The next language milestone is exact-width arithmetic, conversions,
+  overflow rules, and backend load/store lowering.

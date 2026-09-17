@@ -16,6 +16,12 @@ pub enum IrType {
     Void,
     Int,
     Char,
+    U8,
+    U16,
+    U32,
+    U64,
+    I32,
+    I64,
     Bool,
     Pointer(Box<IrType>),
     Struct(String),
@@ -779,6 +785,13 @@ fn ir_type(ty: &Type) -> IrType {
         Type::Void => IrType::Void,
         Type::Int => IrType::Int,
         Type::Char => IrType::Char,
+        Type::U8 => IrType::U8,
+        Type::U16 => IrType::U16,
+        Type::U32 => IrType::U32,
+        Type::U64 => IrType::U64,
+        Type::I32 => IrType::I32,
+        Type::I64 => IrType::I64,
+        Type::Bool => IrType::Bool,
         Type::Pointer(inner) => IrType::Pointer(Box::new(ir_type(inner))),
         Type::Struct(name) => IrType::Struct(name.clone()),
     }
@@ -788,6 +801,10 @@ fn pointee_size(ty: &IrType) -> i64 {
     match ty {
         IrType::Pointer(inner) => pointee_size(inner),
         IrType::Char => 1,
+        IrType::U8 => 1,
+        IrType::U16 => 2,
+        IrType::U32 | IrType::I32 => 4,
+        IrType::U64 | IrType::I64 => 8,
         IrType::Bool => 1,
         IrType::Int | IrType::Void | IrType::Struct(_) => 8,
     }
@@ -798,6 +815,10 @@ fn ir_size(ty: &IrType) -> i64 {
         IrType::Struct(_) => 8,
         IrType::Void | IrType::Int | IrType::Pointer(_) => 8,
         IrType::Char | IrType::Bool => 1,
+        IrType::U8 => 1,
+        IrType::U16 => 2,
+        IrType::U32 | IrType::I32 => 4,
+        IrType::U64 | IrType::I64 => 8,
     }
 }
 
@@ -847,5 +868,20 @@ mod tests {
         assert_eq!(layout.fields["kind"].offset, 0);
         assert_eq!(layout.fields["start"].offset, 1);
         assert_eq!(layout.fields["end"].offset, 9);
+    }
+
+    #[test]
+    fn records_fixed_width_struct_field_sizes() {
+        let program = parse(
+            "struct Header { u8 kind; u16 length; u32 checksum; u64 address; } int main() { return 0; }",
+        )
+        .unwrap();
+        let ir = lower(&program).unwrap();
+        let layout = &ir.structs["Header"];
+        assert_eq!(layout.size, 15);
+        assert_eq!(layout.fields["kind"].offset, 0);
+        assert_eq!(layout.fields["length"].offset, 1);
+        assert_eq!(layout.fields["checksum"].offset, 3);
+        assert_eq!(layout.fields["address"].offset, 7);
     }
 }

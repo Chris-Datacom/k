@@ -4,6 +4,10 @@ K is a small, low-level programming language inspired by C and implemented in Ru
 
 This repository is at **stage 2 bootstrap**. The Rust implementation can lex, parse, check,
 and emit x86-64 assembly for a small, intentionally conservative subset of K.
+The first fixed-width primitive type names (`u8`, `u16`, `u32`, `u64`, `i32`,
+`i64`, and `bool`) are now recognized and carried through semantic analysis
+and IR layout. Their final arithmetic and assembly-width behavior is still
+being implemented.
 The backend is freestanding-friendly assembly: it does not link a runtime or
 depend on libc, but it currently targets the System V calling convention.
 
@@ -32,6 +36,8 @@ k compile <input.k> <output.s>
 
 - Explicit integer and pointer types; no hidden allocations.
 - Predictable data layout and calling conventions.
+- Fixed-width primitive type names are being introduced before `int` and
+  `char` are stabilized.
 - A small grammar that is easy to implement without a large runtime.
 - Diagnostics with byte spans from the beginning.
 - A freestanding-friendly compiler core, separated from the host command line.

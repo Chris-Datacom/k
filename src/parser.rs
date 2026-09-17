@@ -56,6 +56,13 @@ pub enum Type {
     Void,
     Int,
     Char,
+    U8,
+    U16,
+    U32,
+    U64,
+    I32,
+    I64,
+    Bool,
     Pointer(Box<Type>),
     Struct(String),
 }
@@ -300,6 +307,13 @@ impl Parser {
             }
             TokenKind::Int => Ok(Type::Int),
             TokenKind::Char => Ok(Type::Char),
+            TokenKind::U8 => Ok(Type::U8),
+            TokenKind::U16 => Ok(Type::U16),
+            TokenKind::U32 => Ok(Type::U32),
+            TokenKind::U64 => Ok(Type::U64),
+            TokenKind::I32 => Ok(Type::I32),
+            TokenKind::I64 => Ok(Type::I64),
+            TokenKind::Bool => Ok(Type::Bool),
             token => Err(self.error_expected("type", token)),
         }?;
         while self.consume(TokenKind::Star) {
@@ -718,6 +732,31 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn parses_fixed_width_primitive_types() {
+        let program = parse(
+            "u64 load(u8 byte, u16 word, u32 dword, i32 signed, i64 wide, bool flag) { return wide; }",
+        )
+        .unwrap();
+        assert_eq!(program.functions[0].return_type, Type::U64);
+        let parameter_types = program.functions[0]
+            .parameters
+            .iter()
+            .map(|parameter| &parameter.ty)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            parameter_types,
+            vec![
+                &Type::U8,
+                &Type::U16,
+                &Type::U32,
+                &Type::I32,
+                &Type::I64,
+                &Type::Bool
+            ]
+        );
     }
 
     #[test]

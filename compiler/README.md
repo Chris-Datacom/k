@@ -39,6 +39,11 @@ broken K bootstrap can be recovered without circular dependencies.
   bootstrap scripts. It includes the lexer, parser, and hello-world smoke
   test.
 
+The Rust frontend now recognizes the fixed-width primitive type names `u8`,
+`u16`, `u32`, `u64`, `i32`, `i64`, and `bool`. The K-written frontend must
+adopt them only after their arithmetic, conversion, and backend-width rules
+are covered by conformance tests.
+
 From the repository root, run `scripts/bootstrap.sh` on Linux or
 `scripts/bootstrap.ps1` on Windows with WSL. `scripts/check-bootstrap.sh`
 checks every source in the manifest and runs the Rust reference tests.

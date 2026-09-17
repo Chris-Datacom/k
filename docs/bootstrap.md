@@ -16,7 +16,9 @@ generator. The current implementation reaches the first part of this stage:
 `k emit` produces x86-64 System V assembly without a runtime or libc. This is
 intentionally suitable as a foundation for a freestanding kernel, although
 boot entry points, memory access, interrupts, and a kernel ABI are not yet
-implemented. The next backend work must define those interfaces rather than
+implemented. Fixed-width primitive names now reach the typed IR layout
+boundary, but exact-width arithmetic and loads/stores remain backend work.
+The next backend work must define those interfaces rather than
 silently assuming an operating-system process.
 
 ## Stage 2: K compiler written in K
