@@ -16,6 +16,12 @@ source text
 
 The command-line binary in `src/main.rs` handles files, arguments, and human-readable output. The compiler library in `src/lib.rs` owns language behavior. Keeping those responsibilities separate is important for self-hosting: the K implementation can replace the host shell while reusing the same pipeline concepts.
 
+The long-term command-line host is KrumpyOS user space. The compiler must not
+depend directly on kernel internals, privileged instructions, `kinit`, or
+`kpkg`. Host services such as files, processes, diagnostics, and output must
+enter through a small platform layer so the same compiler core can run on
+KrumpyOS and supported bootstrap hosts.
+
 ## Target boundary
 
 Target selection is explicit at the driver boundary. `x86_64-unknown-linux-gnu`
@@ -29,6 +35,21 @@ its calling convention, object format, and backend are implemented.
 control intrinsics. `x86_64-unknown-linux-gnu` remains a hosted target used
 for the `print` intrinsic and for running compiled programs without a kernel
 or emulator during development.
+
+The current `x86_64-krumpyos` target is specifically a privileged,
+kernel-facing target. A separate KrumpyOS user-space target will be introduced
+once the executable format and system-call ABI are stable. User applications,
+the self-hosted compiler, editor, shell, manual viewer, and `kpkg` must target
+that user-space ABI and must not receive privileged hardware intrinsics.
+
+Planned target separation:
+
+- `x86_64-krumpyos-kernel`: privileged freestanding kernel code.
+- `x86_64-krumpyos-user`: isolated user programs using the KrumpyOS ABI.
+- `x86_64-unknown-linux-gnu`: hosted bootstrap and differential testing.
+
+Renaming the existing `x86_64-krumpyos` target is a compatibility decision for
+the first versioned target contract; until then it remains the kernel target.
 
 The first kernel image layout is defined by
 [`linker/x86_64-krumpyos.ld`](../linker/x86_64-krumpyos.ld). It produces an
@@ -88,3 +109,8 @@ boot-stub milestone.
 The core should remain deterministic, testable without a filesystem, and suitable for a future freestanding build. Allocation may be used in the Rust bootstrap implementation, but compiler stages should not depend on hidden global state or host-specific behavior. Fixed-width primitive names are now part of the prototype type pipeline; their exact instruction selection remains a backend contract to be completed.
 
 Every stage should preserve enough source span information for diagnostics. Intermediate representations should be serializable or printable so the Rust compiler and future K compiler can be compared during bootstrap.
+
+Compiler artifacts must also carry a target triple, compiler version, language
+version, ABI version, and reproducibility metadata. Those fields will allow
+KrumpyOS and `kpkg` to reject incompatible binaries and rebuild a package from
+an exact source revision when requested.

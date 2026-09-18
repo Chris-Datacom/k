@@ -123,7 +123,16 @@ pub struct BasicBlock {
 #[derive(Clone, Debug)]
 pub struct TypedProgram {
     pub structs: BTreeMap<String, StructLayout>,
-    pub functions: BTreeMap<String, IrFunction>,
+    pub functions: Vec<(String, IrFunction)>,
+}
+
+impl TypedProgram {
+    pub fn function(&self, name: &str) -> Option<&IrFunction> {
+        self.functions
+            .iter()
+            .find(|(func_name, _)| func_name == name)
+            .map(|(_, func)| func)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -638,13 +647,15 @@ impl FunctionBuilder<'_> {
                         else_block: end_id,
                     },
                 );
-                self.block(body_id, body);
-                self.push(
-                    body_id,
-                    Instruction::Jump {
-                        target: condition_id,
-                    },
-                );
+                let body_end = self.block(body_id, body);
+                if !self.terminated(body_end) {
+                    self.push(
+                        body_end,
+                        Instruction::Jump {
+                            target: condition_id,
+                        },
+                    );
+                }
                 return end_id;
             }
         }
@@ -1043,7 +1054,22 @@ fn is_void_expression(expression: &Expression) -> bool {
         expression,
         Expression::Call { callee, .. }
             if matches!(callee.as_ref(), Expression::Name { value, .. }
-                if matches!(value.as_str(), "print" | "outb" | "cli" | "sti" | "hlt" | "pause"))
+                if matches!(
+                    value.as_str(),
+                    "print"
+                        | "outb"
+                        | "cli"
+                        | "sti"
+                        | "hlt"
+                        | "pause"
+                        | "write_cr0"
+                        | "write_cr3"
+                        | "write_cr4"
+                        | "lidt"
+                        | "sidt"
+                        | "invlpg"
+                        | "wrmsr"
+                ))
     )
 }
 
@@ -1098,18 +1124,18 @@ mod tests {
     fn lowers_expressions_to_explicit_instructions() {
         let program = parse("int main() { let value = 2 + 3; return value; }").unwrap();
         let ir = lower(&program).unwrap();
-        let instructions = &ir.functions["main"].blocks[0].instructions;
+        let instructions = &ir.function("main").unwrap().blocks[0].instructions;
         assert!(instructions
             .iter()
             .any(|instruction| matches!(instruction, Instruction::Constant(5))));
-        assert_eq!(ir.functions["main"].locals[0].ty, IrType::Int);
+        assert_eq!(ir.function("main").unwrap().locals[0].ty, IrType::Int);
     }
 
     #[test]
     fn folds_ir_constants_after_lowering() {
         let program = parse("int main() { return 2 + 3 * 4; }").unwrap();
         let ir = lower(&program).unwrap();
-        let instructions = &ir.functions["main"].blocks[0].instructions;
+        let instructions = &ir.function("main").unwrap().blocks[0].instructions;
         assert!(instructions
             .iter()
             .any(|instruction| matches!(instruction, Instruction::Constant(14))));
@@ -1126,7 +1152,7 @@ mod tests {
     fn krumpyos_intrinsics_lower_without_stack_pops() {
         let program = parse("void idle() { cli(); sti(); hlt(); pause(); }").unwrap();
         let ir = lower(&program).unwrap();
-        let instructions = &ir.functions["idle"].blocks[0].instructions;
+        let instructions = &ir.function("idle").unwrap().blocks[0].instructions;
         assert_eq!(
             instructions,
             &[
@@ -1145,11 +1171,11 @@ mod tests {
         )
         .unwrap();
         let ir = lower(&program).unwrap();
-        let poke = &ir.functions["poke"].blocks[0].instructions;
+        let poke = &ir.function("poke").unwrap().blocks[0].instructions;
         assert!(poke
             .iter()
             .any(|instruction| matches!(instruction, Instruction::Store { volatile: true, .. })));
-        let peek = &ir.functions["peek"].blocks[0].instructions;
+        let peek = &ir.function("peek").unwrap().blocks[0].instructions;
         assert!(peek
             .iter()
             .any(|instruction| matches!(instruction, Instruction::Unary { volatile: true, .. })));
@@ -1162,11 +1188,11 @@ mod tests {
         )
         .unwrap();
         let ir = lower(&program).unwrap();
-        let write = &ir.functions["write"].blocks[0].instructions;
+        let write = &ir.function("write").unwrap().blocks[0].instructions;
         assert!(write
             .iter()
             .any(|instruction| matches!(instruction, Instruction::Store { volatile: true, .. })));
-        let read = &ir.functions["read"].blocks[0].instructions;
+        let read = &ir.function("read").unwrap().blocks[0].instructions;
         assert!(read
             .iter()
             .any(|instruction| matches!(instruction, Instruction::Load { volatile: true, .. })));
@@ -1177,7 +1203,7 @@ mod tests {
         let program =
             parse("void write(u16* buffer, int index) { buffer[index] = (u16)1; }").unwrap();
         let ir = lower(&program).unwrap();
-        let write = &ir.functions["write"].blocks[0].instructions;
+        let write = &ir.function("write").unwrap().blocks[0].instructions;
         assert!(write.iter().any(|instruction| matches!(
             instruction,
             Instruction::Store {

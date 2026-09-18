@@ -21,6 +21,9 @@
       "include": "#keywords"
     },
     {
+      "include": "#declarations"
+    },
+    {
       "include": "#types"
     },
     {
@@ -77,7 +80,7 @@
         },
         {
           "name": "keyword.other.k",
-          "match": "\\b(?:struct|true|false)\\b"
+          "match": "\\b(?:struct|extern|true|false)\\b"
         }
       ]
     },
@@ -86,6 +89,10 @@
         {
           "name": "storage.type.k",
           "match": "\\b(?:int|char|void|u8|u16|u32|u64|i32|i64|bool)\\b"
+        },
+        {
+          "name": "storage.modifier.k",
+          "match": "\\bvolatile\\b"
         }
       ]
     },
@@ -93,7 +100,7 @@
       "patterns": [
         {
           "name": "keyword.operator.k",
-          "match": "==|!=|<=|>=|[+*/=<>&.-]"
+          "match": "==|!=|<=|>=|<<|>>|[+*/=<>&|^~.-]"
         }
       ]
     },
@@ -112,8 +119,43 @@
           "match": "[\\[\\]]"
         },
         {
+          "name": "punctuation.accessor.k",
+          "match": "\\."
+        },
+        {
           "name": "punctuation.terminator.k",
           "match": ";"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(struct)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.k"
+            },
+            "2": {
+              "name": "entity.name.type.k"
+            }
+          }
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\([^;{}]*\\)\\s*\\{)",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.k"
+            }
+          }
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": {
+              "name": "support.function.k"
+            }
+          }
         }
       ]
     }

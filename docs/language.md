@@ -11,6 +11,9 @@ K is intended for systems work where representation and cost matter. The languag
 3. Integer overflow behavior is specified, not accidental.
 4. The compiler does not require a garbage collector or managed runtime.
 5. The core language remains small enough to bootstrap.
+6. Kernel and user-space capabilities are explicit target contracts.
+7. The same language can build the KrumpyOS kernel, system services, compiler,
+   and packages without granting user programs privileged instructions.
 
 ## Current lexical contract
 
@@ -36,6 +39,12 @@ The freestanding `x86_64-krumpyos` target provides low-level kernel intrinsics:
 They are rejected at code generation on hosted targets such as
 `x86_64-unknown-linux-gnu`, where userspace lacks the privilege level to
 execute privileged machine instructions.
+
+These intrinsics are also excluded from the planned KrumpyOS user-space
+target. User programs interact with files, processes, terminals, IPC, and
+networking through the K standard library and versioned KrumpyOS system-call
+ABI. The compiler, shell, editor, `man`-style viewer, and `kpkg` are all
+ordinary user programs under that contract.
 
 ## Parsed core syntax
 
@@ -109,6 +118,17 @@ declaration such as `struct Token token;`; the compiler reserves the complete
 layout size in the function frame, and the declaration is initially
 uninitialized.
 
+## Extern declarations
+
+External functions defined outside the compilation unit (such as in assembly or foreign object files) are declared with `extern`:
+
+```k
+extern void install_idt();
+extern int add(int a, int b);
+```
+
+The compiler checks call arity and argument/return types against the declared signature, and emits standard ABI calls to the external symbol.
+
 ## Primitive type status
 
 | Type | Intent |
@@ -134,6 +154,11 @@ They must not be treated as portable fixed-width types.
 ## Safety boundary
 
 K will not pretend to be memory-safe by accident. The compiler should distinguish ordinary operations from explicitly unsafe operations, document aliasing and lifetime assumptions, and make undefined behavior cases visible in the specification. This boundary is an open design task, not a promise that the prototype already enforces it.
+
+KrumpyOS process isolation is not a substitute for a language safety model.
+Conversely, unsafe K code in a user process must not bypass page permissions,
+UID/GID checks, capability checks, or syscall validation. Kernel code remains
+trusted and privileged; package build scripts and downloaded programs do not.
 
 ## Stability labels
 

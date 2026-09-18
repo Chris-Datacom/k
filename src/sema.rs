@@ -128,6 +128,27 @@ impl<'program> Checker<'program> {
     }
 
     fn collect_functions(&mut self) {
+        for function in &self.program.extern_functions {
+            if self.functions.contains_key(&function.name) {
+                self.error(
+                    function.span,
+                    format!("duplicate function `{}`", function.name),
+                );
+                continue;
+            }
+
+            self.functions.insert(
+                function.name.clone(),
+                ValueType::Function {
+                    return_type: function.return_type.clone(),
+                    parameters: function
+                        .parameters
+                        .iter()
+                        .map(|parameter| parameter.ty.clone())
+                        .collect(),
+                },
+            );
+        }
         for function in &self.program.functions {
             if self.functions.contains_key(&function.name) {
                 self.error(
@@ -548,7 +569,7 @@ impl<'program> Checker<'program> {
                 parameters: vec![Type::U16],
             };
         }
-        if matches!(name, "cli" | "sti" | "hlt" | "pause" | "install_idt") {
+        if matches!(name, "cli" | "sti" | "hlt" | "pause") {
             return ValueType::Function {
                 return_type: Type::Void,
                 parameters: Vec::new(),
@@ -801,5 +822,18 @@ mod tests {
         )
         .unwrap();
         assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn accepts_valid_calls_to_extern_functions() {
+        let program = parse("extern void install_idt(); extern int add(int a, int b); int main() { install_idt(); return add(1, 2); }").unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn typechecks_arguments_to_extern_functions() {
+        let program = parse("extern int add(int a, int b); int main() { return add(1); }").unwrap();
+        let errors = check(&program).unwrap_err();
+        assert!(errors[0].message.contains("expected 2 arguments, found 1"));
     }
 }

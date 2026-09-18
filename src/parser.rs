@@ -14,6 +14,7 @@ use crate::lexer::{LexError, Lexer, Span, SpannedToken, TokenKind};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Program {
     pub structs: Vec<StructDefinition>,
+    pub extern_functions: Vec<ExternFunction>,
     pub functions: Vec<Function>,
     pub span: Span,
 }
@@ -29,6 +30,15 @@ pub struct StructDefinition {
 pub struct StructField {
     pub name: String,
     pub ty: Type,
+    pub span: Span,
+}
+
+/// An external function declaration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternFunction {
+    pub return_type: Type,
+    pub name: String,
+    pub parameters: Vec<Parameter>,
     pub span: Span,
 }
 
@@ -234,10 +244,13 @@ impl Parser {
     fn parse_program(mut self) -> Result<Program, ParseError> {
         let start = self.current_span().start;
         let mut functions = Vec::new();
+        let mut extern_functions = Vec::new();
         let mut structs = Vec::new();
         while !self.at(&TokenKind::Eof) {
             if self.at(&TokenKind::Struct) {
                 structs.push(self.parse_struct()?);
+            } else if self.at(&TokenKind::Extern) {
+                extern_functions.push(self.parse_extern_function()?);
             } else {
                 functions.push(self.parse_function()?);
             }
@@ -245,7 +258,45 @@ impl Parser {
         let end = self.current_span().end;
         Ok(Program {
             structs,
+            extern_functions,
             functions,
+            span: Span { start, end },
+        })
+    }
+
+    fn parse_extern_function(&mut self) -> Result<ExternFunction, ParseError> {
+        let start = self.expect(TokenKind::Extern)?.start;
+        let return_type = self.parse_type()?;
+        let (name, _) = self.expect_identifier("extern function name")?;
+        self.expect(TokenKind::LeftParen)?;
+        let mut parameters = Vec::new();
+        if !self.at(&TokenKind::RightParen) {
+            loop {
+                let parameter_start = self.current_span().start;
+                let ty = self.parse_type()?;
+                let (param_name, param_span) = match self.peek().token {
+                    TokenKind::Identifier(_) => self.expect_identifier("parameter name")?,
+                    _ => (format!("arg{}", parameters.len()), self.previous_span()),
+                };
+                parameters.push(Parameter {
+                    ty,
+                    name: param_name,
+                    span: Span {
+                        start: parameter_start,
+                        end: param_span.end,
+                    },
+                });
+                if !self.consume(TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::RightParen)?;
+        let end = self.expect(TokenKind::Semicolon)?.end;
+        Ok(ExternFunction {
+            return_type,
+            name,
+            parameters,
             span: Span { start, end },
         })
     }
@@ -709,6 +760,14 @@ impl Parser {
         self.peek().span
     }
 
+    fn previous_span(&self) -> Span {
+        if self.cursor > 0 {
+            self.tokens[self.cursor - 1].span
+        } else {
+            self.current_span()
+        }
+    }
+
     fn take(&mut self) -> SpannedToken {
         let token = self.tokens[self.cursor].clone();
         if !matches!(token.token, TokenKind::Eof) {
@@ -1000,5 +1059,17 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn parses_extern_function_declarations() {
+        let program = parse("extern void install_idt(); extern int add(int a, int b); int main() { return 0; }").unwrap();
+        assert_eq!(program.extern_functions.len(), 2);
+        assert_eq!(program.extern_functions[0].name, "install_idt");
+        assert_eq!(program.extern_functions[0].return_type, Type::Void);
+        assert!(program.extern_functions[0].parameters.is_empty());
+        assert_eq!(program.extern_functions[1].name, "add");
+        assert_eq!(program.extern_functions[1].parameters.len(), 2);
+        assert_eq!(program.functions.len(), 1);
     }
 }

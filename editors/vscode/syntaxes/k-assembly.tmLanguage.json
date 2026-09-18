@@ -1,0 +1,125 @@
+{
+  "name": "K Assembly",
+  "scopeName": "source.k-assembly",
+  "fileTypes": [
+    "s",
+    "S",
+    "asm"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#directives"
+    },
+    {
+      "include": "#labels"
+    },
+    {
+      "include": "#instructions"
+    },
+    {
+      "include": "#registers"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.k-assembly",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.line.number-sign.k-assembly",
+          "match": "#.*$"
+        },
+        {
+          "name": "comment.block.k-assembly",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.k-assembly",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.k-assembly",
+          "match": "\\\\(?:[nrt\\\\\"]|[0-7]{1,3})"
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "keyword.control.directive.k-assembly",
+          "match": "^\\s*\\.[A-Za-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "keyword.other.directive.k-assembly",
+          "match": "(?<![A-Za-z0-9_])\\.(?:text|data|rodata|bss|section|globl|global|type|size|align|org|byte|word|long|quad|code16|code32|code64)\\b"
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "name": "entity.name.label.k-assembly",
+          "match": "^\\s*[A-Za-z_.$][A-Za-z0-9_.$]*:"
+        },
+        {
+          "name": "entity.name.label.reference.k-assembly",
+          "match": "\\b[A-Za-z_.$][A-Za-z0-9_.$]*\\b(?=\\s*(?:\\(|$))"
+        }
+      ]
+    },
+    "instructions": {
+      "patterns": [
+        {
+          "name": "keyword.control.instruction.k-assembly",
+          "match": "\\b(?:adc|add|and|call|cld|cli|cmp|div|hlt|imul|in|inc|int|iretq|jc|jz|jmp|j[abeclgmnopsz]+|lea|lgdt|lidt|ljmp|mov|movb|movl|movq|movw|movzbq|or|out|pause|pop|push|rep|ret|rdmsr|shl|shr|stosl|stosq|sub|test|wrmsr|xor)\\b"
+        }
+      ]
+    },
+    "registers": {
+      "patterns": [
+        {
+          "name": "variable.language.register.k-assembly",
+          "match": "%(?:rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r8|r9|r10|r11|r12|r13|r14|r15|eax|ebx|ecx|edx|esi|edi|ebp|esp|ax|bx|cx|dx|si|di|sp|bp|al|bl|cl|dl|cr0|cr2|cr3|cr4|cs|ds|es|ss|fs|gs)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.immediate.k-assembly",
+          "match": "\\$\\b(?:0x[0-9A-Fa-f]+|[0-9]+)\\b"
+        },
+        {
+          "name": "constant.numeric.hex.k-assembly",
+          "match": "\\b(?:0x[0-9A-Fa-f]+|[0-9]+)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.address.k-assembly",
+          "match": "[(),*+\\-]"
+        }
+      ]
+    }
+  }
+}
