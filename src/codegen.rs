@@ -260,6 +260,9 @@ impl Generator {
                     UnaryOperator::Negate => {
                         self.output.push_str("  pop rax\n  neg rax\n  push rax\n")
                     }
+                    UnaryOperator::BitwiseNot => {
+                        self.output.push_str("  pop rax\n  not rax\n  push rax\n")
+                    }
                     UnaryOperator::Dereference => {
                         self.output.push_str("  pop rax\n");
                         if *volatile {
@@ -306,6 +309,78 @@ impl Generator {
                     }
                     self.output
                         .push_str("  pop rdx\n  in al, dx\n  movzx eax, al\n  push rax\n");
+                }
+                Instruction::ReadCr0 => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("read_cr0 is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  mov rax, cr0\n  push rax\n");
+                }
+                Instruction::WriteCr0 => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("write_cr0 is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  mov cr0, rax\n");
+                }
+                Instruction::ReadCr2 => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("read_cr2 is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  mov rax, cr2\n  push rax\n");
+                }
+                Instruction::ReadCr3 => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("read_cr3 is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  mov rax, cr3\n  push rax\n");
+                }
+                Instruction::WriteCr3 => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("write_cr3 is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  mov cr3, rax\n");
+                }
+                Instruction::ReadCr4 => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("read_cr4 is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  mov rax, cr4\n  push rax\n");
+                }
+                Instruction::WriteCr4 => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("write_cr4 is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  mov cr4, rax\n");
+                }
+                Instruction::Lidt => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("lidt is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  lidt [rax]\n");
+                }
+                Instruction::Sidt => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("sidt is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  sidt [rax]\n");
+                }
+                Instruction::Invlpg => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("invlpg is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  invlpg [rax]\n");
+                }
+                Instruction::Rdmsr => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("rdmsr is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rcx\n  rdmsr\n  shl rdx, 32\n  or rax, rdx\n  push rax\n");
+                }
+                Instruction::Wrmsr => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error("wrmsr is only available on krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  pop rdx\n  mov rcx, rax\n  mov rax, rdx\n  mov rdx, rdx\n  shr rdx, 32\n  wrmsr\n");
                 }
                 instruction @ (Instruction::Cli
                 | Instruction::Sti
@@ -371,6 +446,11 @@ impl Generator {
             BinaryOperator::Subtract => self.output.push_str("  sub rax, rdi\n"),
             BinaryOperator::Multiply => self.output.push_str("  imul rax, rdi\n"),
             BinaryOperator::Divide => self.output.push_str("  cqo\n  idiv rdi\n"),
+            BinaryOperator::BitwiseAnd => self.output.push_str("  and rax, rdi\n"),
+            BinaryOperator::BitwiseOr => self.output.push_str("  or rax, rdi\n"),
+            BinaryOperator::BitwiseXor => self.output.push_str("  xor rax, rdi\n"),
+            BinaryOperator::ShiftLeft => self.output.push_str("  mov rcx, rdi\n  shl rax, cl\n"),
+            BinaryOperator::ShiftRight => self.output.push_str("  mov rcx, rdi\n  shr rax, cl\n"),
             BinaryOperator::Equal
             | BinaryOperator::NotEqual
             | BinaryOperator::Less

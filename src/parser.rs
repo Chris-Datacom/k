@@ -176,6 +176,7 @@ pub enum Expression {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UnaryOperator {
     Negate,
+    BitwiseNot,
     AddressOf,
     Dereference,
 }
@@ -186,6 +187,11 @@ pub enum BinaryOperator {
     Subtract,
     Multiply,
     Divide,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    ShiftLeft,
+    ShiftRight,
     Equal,
     NotEqual,
     Less,
@@ -517,6 +523,18 @@ impl Parser {
                     operand: Box::new(operand),
                 }
             }
+            TokenKind::Tilde => {
+                let start = self.take().span.start;
+                let operand = self.parse_prefix_expression()?;
+                Expression::Unary {
+                    operator: UnaryOperator::BitwiseNot,
+                    span: Span {
+                        start,
+                        end: operand.span().end,
+                    },
+                    operand: Box::new(operand),
+                }
+            }
             TokenKind::Ampersand => {
                 let start = self.take().span.start;
                 let operand = self.parse_prefix_expression()?;
@@ -664,16 +682,21 @@ impl Parser {
 
     fn binary_operator(&self) -> Option<(BinaryOperator, u8)> {
         Some(match self.peek().token {
-            TokenKind::EqualEqual => (BinaryOperator::Equal, 1),
-            TokenKind::NotEqual => (BinaryOperator::NotEqual, 1),
-            TokenKind::Less => (BinaryOperator::Less, 1),
-            TokenKind::LessEqual => (BinaryOperator::LessEqual, 1),
-            TokenKind::Greater => (BinaryOperator::Greater, 1),
-            TokenKind::GreaterEqual => (BinaryOperator::GreaterEqual, 1),
-            TokenKind::Plus => (BinaryOperator::Add, 2),
-            TokenKind::Minus => (BinaryOperator::Subtract, 2),
-            TokenKind::Star => (BinaryOperator::Multiply, 3),
-            TokenKind::Slash => (BinaryOperator::Divide, 3),
+            TokenKind::Pipe => (BinaryOperator::BitwiseOr, 1),
+            TokenKind::Caret => (BinaryOperator::BitwiseXor, 2),
+            TokenKind::Ampersand => (BinaryOperator::BitwiseAnd, 3),
+            TokenKind::EqualEqual => (BinaryOperator::Equal, 4),
+            TokenKind::NotEqual => (BinaryOperator::NotEqual, 4),
+            TokenKind::Less => (BinaryOperator::Less, 5),
+            TokenKind::LessEqual => (BinaryOperator::LessEqual, 5),
+            TokenKind::Greater => (BinaryOperator::Greater, 5),
+            TokenKind::GreaterEqual => (BinaryOperator::GreaterEqual, 5),
+            TokenKind::LessLess => (BinaryOperator::ShiftLeft, 6),
+            TokenKind::GreaterGreater => (BinaryOperator::ShiftRight, 6),
+            TokenKind::Plus => (BinaryOperator::Add, 7),
+            TokenKind::Minus => (BinaryOperator::Subtract, 7),
+            TokenKind::Star => (BinaryOperator::Multiply, 8),
+            TokenKind::Slash => (BinaryOperator::Divide, 8),
             _ => return None,
         })
     }

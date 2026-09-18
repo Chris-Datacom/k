@@ -564,6 +564,10 @@ int lex_one(char* source, int length, int position, struct Token* out) {
                 out.end = position + 2;
                 return position + 2;
             }
+            if (source[position + 1] == '<') {
+                out.end = position + 2;
+                return position + 2;
+            }
         }
         return position + 1;
     }
@@ -574,10 +578,26 @@ int lex_one(char* source, int length, int position, struct Token* out) {
                 out.end = position + 2;
                 return position + 2;
             }
+            if (source[position + 1] == '>') {
+                out.end = position + 2;
+                return position + 2;
+            }
         }
         return position + 1;
     }
     if (current == '&') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '|') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '^') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '~') {
         out.kind = 3;
         return position + 1;
     }
@@ -975,6 +995,15 @@ int expression_prefix(
         }
         return expression_arena_add(arena, 4, 1, start, arena.nodes[operand].end, operand);
     }
+    if (parser_at_char(parser, '~') == 1) {
+        let start = parser.current.start;
+        parser_advance(parser);
+        let operand = expression_prefix(parser, arena);
+        if (operand < 0) {
+            return -1;
+        }
+        return expression_arena_add(arena, 4, 4, start, arena.nodes[operand].end, operand);
+    }
     if (parser_at_char(parser, '&') == 1) {
         let start = parser.current.start;
         parser_advance(parser);
@@ -1001,17 +1030,26 @@ int expression_prefix(
 }
 
 int expression_precedence(struct Parser* parser) {
-    if (parser_at_char(parser, '+') == 1) {
+    if (parser_at_char(parser, '|') == 1) {
+        return 1;
+    }
+    if (parser_at_char(parser, '^') == 1) {
         return 2;
+    }
+    if (parser_at_char(parser, '&') == 1) {
+        return 3;
+    }
+    if (parser_at_char(parser, '+') == 1) {
+        return 7;
     }
     if (parser_at_char(parser, '-') == 1) {
-        return 2;
+        return 7;
     }
     if (parser_at_char(parser, '*') == 1) {
-        return 3;
+        return 8;
     }
     if (parser_at_char(parser, '/') == 1) {
-        return 3;
+        return 8;
     }
     return 0;
 }
@@ -1028,6 +1066,15 @@ int expression_operator(struct Parser* parser) {
     }
     if (parser_at_char(parser, '/') == 1) {
         return 4;
+    }
+    if (parser_at_char(parser, '&') == 1) {
+        return 5;
+    }
+    if (parser_at_char(parser, '|') == 1) {
+        return 6;
+    }
+    if (parser_at_char(parser, '^') == 1) {
+        return 7;
     }
     return 0;
 }
