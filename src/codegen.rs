@@ -55,7 +55,7 @@ pub fn emit_typed_for_target(
     for (name, function) in &program.functions {
         generator.function(name, function)?;
     }
-    if target == Target::X86_64SystemV && program.functions.contains_key("main") {
+    if target == Target::X86_64SystemV && program.functions.iter().any(|(name, _)| name == "main") {
         generator.output.push_str(
             ".globl _start\n.type _start, @function\n_start:\n  call main\n  mov rdi, rax\n  mov rax, 60\n  syscall\n\n",
         );
@@ -172,7 +172,13 @@ impl Generator {
     ) -> Result<(), CodegenError> {
         for instruction in &block.instructions {
             match instruction {
-                Instruction::Constant(value) => self.output.push_str(&format!("  push {value}\n")),
+                Instruction::Constant(value) => {
+                    if *value >= i32::MIN as i64 && *value <= i32::MAX as i64 {
+                        self.output.push_str(&format!("  push {value}\n"));
+                    } else {
+                        self.output.push_str(&format!("  mov rax, {value}\n  push rax\n"));
+                    }
+                }
                 Instruction::StringLiteral(value) => {
                     let label = self.fresh_label("string");
                     self.rodata.push_str(&format!("{label}:\n  .byte "));

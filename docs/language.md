@@ -109,6 +109,17 @@ declaration such as `struct Token token;`; the compiler reserves the complete
 layout size in the function frame, and the declaration is initially
 uninitialized.
 
+## Extern declarations
+
+External functions defined outside the compilation unit (such as in assembly or foreign object files) are declared with `extern`:
+
+```k
+extern void install_idt();
+extern int add(int a, int b);
+```
+
+The compiler checks call arity and argument/return types against the declared signature, and emits standard ABI calls to the external symbol.
+
 ## Primitive type status
 
 | Type | Intent |
