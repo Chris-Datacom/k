@@ -18,6 +18,8 @@ Paste the smallest K source file or command that reproduces the issue.
 - K revision:
 - Rust version:
 - Operating system:
+- Compiler target:
+- KrumpyOS ABI version, if applicable:
 
 ## Additional context
 

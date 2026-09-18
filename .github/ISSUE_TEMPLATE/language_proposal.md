@@ -9,7 +9,9 @@ What should K make possible or clearer?
 
 ## Proposal
 
-Describe the syntax and semantics, including types, memory behavior, diagnostics, and generated-code expectations.
+Describe the syntax and semantics, including types, memory behavior,
+diagnostics, generated-code expectations, and whether the feature differs
+between hosted, KrumpyOS kernel, and KrumpyOS user-space targets.
 
 ## Alternatives
 

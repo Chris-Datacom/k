@@ -33,6 +33,19 @@
           ".k"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "k-assembly",
+        "aliases": [
+          "K Assembly",
+          "k-assembly"
+        ],
+        "extensions": [
+          ".s",
+          ".S",
+          ".asm"
+        ],
+        "configuration": "./assembly-language-configuration.json"
       }
     ],
     "grammars": [
@@ -40,6 +53,11 @@
         "language": "k",
         "scopeName": "source.k",
         "path": "./syntaxes/k.tmLanguage.json"
+      },
+      {
+        "language": "k-assembly",
+        "scopeName": "source.k-assembly",
+        "path": "./syntaxes/k-assembly.tmLanguage.json"
       }
     ]
   }

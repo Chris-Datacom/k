@@ -1,7 +1,7 @@
 # K-written compiler
 
 This directory contains the compiler implementation that will eventually
-replace the Rust host.
+replace the Rust host and run as a normal user-space program inside KrumpyOS.
 
 ## Bootstrap policy
 
@@ -68,6 +68,15 @@ The K compiler must grow in this order:
 3. Add K typed IR lowering and the x86-64 backend.
 4. Add a K compiler driver that can compile the compiler sources.
 5. Produce two reproducible K-built releases matching the Rust reference.
+6. Cross-compile the K compiler for the KrumpyOS user-space ABI.
+7. Compile programs and locked source packages from inside KrumpyOS.
+8. Rebuild the compiler natively and compare normalized artifacts.
+
+The finished compiler is bundled with developer and full KrumpyOS profiles and
+can be installed in other profiles through `kpkg`. It must not run in the
+kernel, act as PID 1, fetch untrusted source itself, or install files directly
+into system locations. `kpkg` owns repository trust and installation; the
+compiler consumes local source and emits build artifacts.
 
 See [`docs/self-hosting.md`](../docs/self-hosting.md) for the gates and
 commands for each stage. Only after the final reproducibility gate may the

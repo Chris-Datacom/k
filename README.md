@@ -1,6 +1,9 @@
 # K
 
-K is a small, low-level programming language inspired by C and implemented in Rust. The project is intended to become self-compiling: eventually, the K compiler will be rebuilt in K and compiled by an earlier K compiler.
+K is a small, low-level programming language inspired by C and implemented
+initially in Rust. The project is intended to become self-compiling: the K
+compiler will be rebuilt in K, bundled with KrumpyOS, and used there to build
+K programs and packages from source.
 
 This repository is at **stage 2 bootstrap**. The Rust implementation can lex, parse, check,
 and emit x86-64 assembly for a small, intentionally conservative subset of K.
@@ -59,6 +62,24 @@ The syntax and guarantees are provisional until marked stable. See [the language
 Rust is currently a temporary bootstrap and recovery compiler. The project
 will remove it only after two reproducible releases have been built by K.
 
+## System role
+
+K and KrumpyOS are separate repositories with one coordinated product path:
+
+1. The Rust reference compiler cross-compiles the K kernel and early programs.
+2. The K-written compiler reaches feature parity and reproducibly compiles
+   itself.
+3. KrumpyOS gains user-mode execution, filesystems, process isolation, and the
+   system-call ABI needed to run the compiler as an ordinary user program.
+4. The K compiler, runtime, standard library, editor, shell, documentation
+   tools, and `kpkg` are bundled in development and full installations.
+5. `kpkg` installs trusted precompiled artifacts by default and can explicitly
+   fetch and compile K source from configured repositories.
+
+The compiler is not part of the kernel or init system. In the finished system
+it runs in user space under the same permissions, process, filesystem, and
+package-management rules as other development tools.
+
 ## Repository map
 
 - `src/lexer.rs`: source spans, tokens, and the first executable language rules.
@@ -89,6 +110,8 @@ will remove it only after two reproducible releases have been built by K.
 - `.gitattributes`: GitHub Linguist language classification for `.k` files.
 - `docs/language.md`: current language contract and open decisions.
 - `docs/bootstrap.md`: route from Rust implementation to self-hosting.
+- `docs/self-hosting.md`: reproducibility gates and the route to running the
+  compiler inside KrumpyOS.
 - `scripts/`: reproducible bootstrap and source-manifest checks.
 - `examples/hello.k`: a tiny source fixture used by the documentation.
 - `examples/serial_port.k`: a freestanding I/O-port smoke test (`outb`/`inb`)

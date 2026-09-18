@@ -126,6 +126,32 @@ two tagged releases.
 Only after both releases pass the bootstrap and conformance suites may the
 Rust implementation be removed from the normal build.
 
+## Stage 6: KrumpyOS-native compiler
+
+The first K compiler running inside KrumpyOS is a normal user-space program,
+not kernel code and not part of PID 1. It is cross-compiled initially, bundled
+in developer/full images, and launched by the shell or `kpkg` build worker.
+
+The native gate requires:
+
+1. compile and run a single-file K program inside KrumpyOS
+2. compile a multi-file program using the native filesystem
+3. reproduce hosted diagnostics for shared invalid fixtures
+4. build a locked source package without network access during compilation
+5. rebuild the K compiler and compare its normalized output with the hosted
+   build
+
+The Rust reference remains available as an external recovery path through this
+transition, even after it is no longer the normal compiler.
+
+## Stage 7: Toolchain distribution
+
+The compiler, runtime, standard library, headers/interfaces, documentation, and
+build tools are versioned packages. `kpkg` installs matching versions and
+checks target and ABI compatibility. Official binary artifacts are signed and
+checksummed; users may explicitly request source builds from exact Git commits.
+Fetching and trust policy belong to `kpkg`, not to compiler source code.
+
 ## Working commands
 
 From the repository root:

@@ -136,7 +136,7 @@ The kernel-facing ELF link contract is defined by
 `0x00010000`; the BIOS boot stub provides that address and establishes the
 machine state before transferring control to K code.
 
-## Stage 3: K builds K
+## Stage 3: K builds K on a hosted bootstrap system
 
 Compile the K compiler source with the Rust host compiler, then use that resulting K compiler to compile itself. The two outputs must agree on a defined set of source programs. This is the first self-hosting milestone.
 
@@ -154,6 +154,43 @@ small documented backend boundary and remove the Rust implementation from the
 normal workspace. Preserve a separately archived recovery compiler until the
 K toolchain has an independent release process.
 
+## Stage 6: Run the compiler inside KrumpyOS
+
+Self-hosting and OS hosting are separate gates. After K can build K on a
+supported hosted system, KrumpyOS must provide:
+
+- a stable user-space executable format and loader
+- isolated processes, threads, and a system-call ABI
+- filesystem and terminal I/O
+- user/root credentials and file permissions
+- sufficient virtual memory for compiler arenas and build outputs
+- a K user-space runtime and standard library
+
+The host compiler then cross-compiles the K compiler for the KrumpyOS
+user-space target. Inside KrumpyOS, that compiler must compile and run a small
+program, build a package from a locked source tree, and finally rebuild the
+compiler itself.
+
+The compiler is included in developer and full installation profiles. Whether
+it is included in minimal or server profiles remains an installer policy
+choice; `kpkg` must be able to add it later.
+
+## Stage 7: Package-aware toolchain
+
+The native compiler integrates with `kpkg` through documented files and
+process interfaces rather than private APIs:
+
+- manifests declare language, compiler, target, ABI, and dependency versions
+- lockfiles identify exact source commits and dependency artifacts
+- package builds run in a restricted staging directory
+- precompiled artifacts are verified before installation
+- source builds are explicit and never a silent fallback
+- successful builds produce deterministic package artifacts where possible
+
+`kpkg` owns fetching, trust, dependency resolution, installation, and rollback.
+The K compiler owns compilation. Git hosting is a repository transport and
+must not become an implicit trust boundary.
+
 ## Invariants for every stage
 
 - The language specification and implementation tests change together.
@@ -161,3 +198,7 @@ K toolchain has an independent release process.
 - Compiler output has a deterministic mode for comparison.
 - Error messages remain source-spanned and actionable.
 - The bootstrap process is documented as commands a new contributor can run.
+- Hosted and KrumpyOS-native compiler behavior is covered by the same
+  conformance fixtures.
+- Package builds never require compiler privileges beyond their declared build
+  sandbox.

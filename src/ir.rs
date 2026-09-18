@@ -647,13 +647,15 @@ impl FunctionBuilder<'_> {
                         else_block: end_id,
                     },
                 );
-                self.block(body_id, body);
-                self.push(
-                    body_id,
-                    Instruction::Jump {
-                        target: condition_id,
-                    },
-                );
+                let body_end = self.block(body_id, body);
+                if !self.terminated(body_end) {
+                    self.push(
+                        body_end,
+                        Instruction::Jump {
+                            target: condition_id,
+                        },
+                    );
+                }
                 return end_id;
             }
         }
@@ -1052,7 +1054,22 @@ fn is_void_expression(expression: &Expression) -> bool {
         expression,
         Expression::Call { callee, .. }
             if matches!(callee.as_ref(), Expression::Name { value, .. }
-                if matches!(value.as_str(), "print" | "outb" | "cli" | "sti" | "hlt" | "pause"))
+                if matches!(
+                    value.as_str(),
+                    "print"
+                        | "outb"
+                        | "cli"
+                        | "sti"
+                        | "hlt"
+                        | "pause"
+                        | "write_cr0"
+                        | "write_cr3"
+                        | "write_cr4"
+                        | "lidt"
+                        | "sidt"
+                        | "invlpg"
+                        | "wrmsr"
+                ))
     )
 }
 

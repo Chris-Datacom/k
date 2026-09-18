@@ -30,6 +30,11 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
 
 ## Unreleased
 
+- Aligned the compiler roadmap with the KrumpyOS product path: a distinct
+  kernel and user-space target, a K compiler running as an ordinary KrumpyOS
+  process, reproducible native builds, and `kpkg`-managed toolchain
+  distribution.
+
 - Added prototype fixed-width primitive type names: `u8`, `u16`, `u32`, `u64`,
   `i32`, `i64`, and `bool`.
 - Carried fixed-width types through parsing, semantic analysis, and IR layout
