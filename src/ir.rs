@@ -88,6 +88,18 @@ pub enum Instruction {
     Sti,
     Hlt,
     Pause,
+    ReadCr0,
+    WriteCr0,
+    ReadCr2,
+    ReadCr3,
+    WriteCr3,
+    ReadCr4,
+    WriteCr4,
+    Lidt,
+    Sidt,
+    Invlpg,
+    Rdmsr,
+    Wrmsr,
     Cast(IrType),
     Pop,
     Branch {
@@ -251,10 +263,19 @@ fn fold_expression(expression: &mut Expression) {
                 return;
             };
             let value = match operator {
-                BinaryOperator::Add => Some(left_value + right_value),
-                BinaryOperator::Subtract => Some(left_value - right_value),
-                BinaryOperator::Multiply => Some(left_value * right_value),
-                BinaryOperator::Divide if right_value != 0 => Some(left_value / right_value),
+                BinaryOperator::Add => Some(left_value.wrapping_add(right_value)),
+                BinaryOperator::Subtract => Some(left_value.wrapping_sub(right_value)),
+                BinaryOperator::Multiply => Some(left_value.wrapping_mul(right_value)),
+                BinaryOperator::Divide if right_value != 0 => Some(left_value.wrapping_div(right_value)),
+                BinaryOperator::BitwiseAnd => Some(left_value & right_value),
+                BinaryOperator::BitwiseOr => Some(left_value | right_value),
+                BinaryOperator::BitwiseXor => Some(left_value ^ right_value),
+                BinaryOperator::ShiftLeft if (0..64).contains(&right_value) => {
+                    Some(left_value.wrapping_shl(right_value as u32))
+                }
+                BinaryOperator::ShiftRight if (0..64).contains(&right_value) => {
+                    Some(left_value.wrapping_shr(right_value as u32))
+                }
                 _ => None,
             };
             if let Some(value) = value {
@@ -367,17 +388,26 @@ fn fold_instruction_constants(instructions: &mut Vec<Instruction>) {
 
 fn constant_binary(operator: BinaryOperator, left: i64, right: i64) -> Option<i64> {
     match operator {
-        BinaryOperator::Add => Some(left + right),
-        BinaryOperator::Subtract => Some(left - right),
-        BinaryOperator::Multiply => Some(left * right),
-        BinaryOperator::Divide if right != 0 => Some(left / right),
+        BinaryOperator::Add => Some(left.wrapping_add(right)),
+        BinaryOperator::Subtract => Some(left.wrapping_sub(right)),
+        BinaryOperator::Multiply => Some(left.wrapping_mul(right)),
+        BinaryOperator::Divide if right != 0 => Some(left.wrapping_div(right)),
+        BinaryOperator::BitwiseAnd => Some(left & right),
+        BinaryOperator::BitwiseOr => Some(left | right),
+        BinaryOperator::BitwiseXor => Some(left ^ right),
+        BinaryOperator::ShiftLeft if (0..64).contains(&right) => {
+            Some(left.wrapping_shl(right as u32))
+        }
+        BinaryOperator::ShiftRight if (0..64).contains(&right) => {
+            Some(left.wrapping_shr(right as u32))
+        }
         BinaryOperator::Equal => Some(i64::from(left == right)),
         BinaryOperator::NotEqual => Some(i64::from(left != right)),
         BinaryOperator::Less => Some(i64::from(left < right)),
         BinaryOperator::LessEqual => Some(i64::from(left <= right)),
         BinaryOperator::Greater => Some(i64::from(left > right)),
         BinaryOperator::GreaterEqual => Some(i64::from(left >= right)),
-        BinaryOperator::Divide => None,
+        BinaryOperator::Divide | BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => None,
     }
 }
 
@@ -704,12 +734,57 @@ impl FunctionBuilder<'_> {
                         self.push(id, Instruction::InB);
                         return;
                     }
+                    if value == "write_cr0" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::WriteCr0);
+                        return;
+                    }
+                    if value == "write_cr3" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::WriteCr3);
+                        return;
+                    }
+                    if value == "write_cr4" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::WriteCr4);
+                        return;
+                    }
+                    if value == "lidt" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::Lidt);
+                        return;
+                    }
+                    if value == "sidt" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::Sidt);
+                        return;
+                    }
+                    if value == "invlpg" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::Invlpg);
+                        return;
+                    }
+                    if value == "rdmsr" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::Rdmsr);
+                        return;
+                    }
+                    if value == "wrmsr" && arguments.len() == 2 {
+                        self.expression(id, &arguments[0]);
+                        self.expression(id, &arguments[1]);
+                        self.push(id, Instruction::Wrmsr);
+                        return;
+                    }
                     if arguments.is_empty() {
                         let instruction = match value.as_str() {
                             "cli" => Some(Instruction::Cli),
                             "sti" => Some(Instruction::Sti),
                             "hlt" => Some(Instruction::Hlt),
                             "pause" => Some(Instruction::Pause),
+                            "read_cr0" => Some(Instruction::ReadCr0),
+                            "read_cr2" => Some(Instruction::ReadCr2),
+                            "read_cr3" => Some(Instruction::ReadCr3),
+                            "read_cr4" => Some(Instruction::ReadCr4),
                             _ => None,
                         };
                         if let Some(instruction) = instruction {

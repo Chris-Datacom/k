@@ -351,6 +351,10 @@ int backend_unary_negate(struct BackendOutput* output) {
     return backend_text(output, "  pop rax\n  neg rax\n  push rax\n", 31);
 }
 
+int backend_unary_not(struct BackendOutput* output) {
+    return backend_text(output, "  pop rax\n  not rax\n  push rax\n", 31);
+}
+
 int backend_binary(struct BackendOutput* output, int operator) {
     if (operator == 1) {
         return backend_text(
@@ -380,7 +384,28 @@ int backend_binary(struct BackendOutput* output, int operator) {
             48
         );
     }
-    if (operator >= 5) {
+    if (operator == 5) {
+        return backend_text(
+            output,
+            "  pop rdi\n  pop rax\n  and rax, rdi\n  push rax\n",
+            46
+        );
+    }
+    if (operator == 6) {
+        return backend_text(
+            output,
+            "  pop rdi\n  pop rax\n  or rax, rdi\n  push rax\n",
+            45
+        );
+    }
+    if (operator == 7) {
+        return backend_text(
+            output,
+            "  pop rdi\n  pop rax\n  xor rax, rdi\n  push rax\n",
+            46
+        );
+    }
+    if (operator >= 8) {
         if (backend_text(output, "  pop rdi\n", 10) == 0) {
             return 0;
         }
@@ -390,32 +415,32 @@ int backend_binary(struct BackendOutput* output, int operator) {
         if (backend_text(output, "  cmp rax, rdi\n", 15) == 0) {
             return 0;
         }
-        if (operator == 5) {
+        if (operator == 8) {
             if (backend_text(output, "  sete al\n", 10) == 0) {
                 return 0;
             }
         } else {
-            if (operator == 6) {
+            if (operator == 9) {
                 if (backend_text(output, "  setne al\n", 11) == 0) {
                     return 0;
                 }
             } else {
-                if (operator == 7) {
+                if (operator == 10) {
                     if (backend_text(output, "  setl al\n", 10) == 0) {
                         return 0;
                     }
                 } else {
-                    if (operator == 8) {
+                    if (operator == 11) {
                         if (backend_text(output, "  setle al\n", 11) == 0) {
                             return 0;
                         }
                     } else {
-                        if (operator == 9) {
+                        if (operator == 12) {
                             if (backend_text(output, "  setg al\n", 10) == 0) {
                                 return 0;
                             }
                         } else {
-                            if (operator == 10) {
+                            if (operator == 13) {
                                 if (backend_text(output, "  setge al\n", 11) == 0) {
                                     return 0;
                                 }

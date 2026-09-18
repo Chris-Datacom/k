@@ -367,6 +367,10 @@ int lex_one(char* source, int length, int position, struct Token* out) {
                 out.end = position + 2;
                 return position + 2;
             }
+            if (source[position + 1] == '<') {
+                out.end = position + 2;
+                return position + 2;
+            }
         }
         return position + 1;
     }
@@ -377,10 +381,26 @@ int lex_one(char* source, int length, int position, struct Token* out) {
                 out.end = position + 2;
                 return position + 2;
             }
+            if (source[position + 1] == '>') {
+                out.end = position + 2;
+                return position + 2;
+            }
         }
         return position + 1;
     }
     if (current == '&') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '|') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '^') {
+        out.kind = 3;
+        return position + 1;
+    }
+    if (current == '~') {
         out.kind = 3;
         return position + 1;
     }

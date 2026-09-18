@@ -18,7 +18,7 @@ Source is UTF-8, but the initial grammar is ASCII. Whitespace is insignificant. 
 
 Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digits, or `_`. Decimal integer literals contain one or more digits. Character literals use single quotes and support `\\n`, `\\r`, `\\t`, `\\\\`, and `\\'`; strings use double quotes and support the same escapes plus `\\\"`. The first reserved words are `int`, `char`, `if`, `else`, `while`, `return`, `let`, `true`, and `false`; `void` is recognized in type position, and `volatile` is recognized as a pointer qualifier in type position.
 
-The initial operator and punctuation set is `+ - * / = == != < <= > >= & ; , ( ) { } [ ] .`.
+The operator and punctuation set includes `+ - * / = == != < <= > >= & | ^ ~ << >> ; , ( ) { } [ ] .`.
 
 The freestanding Linux bootstrap provides a `print(char*)` intrinsic. It
 writes the complete zero-terminated string's payload to standard output using
@@ -26,17 +26,16 @@ the x86-64 `write` system call; it does not allocate or require libc. This
 intrinsic is currently target-specific and exists to make the self-hosting
 bootstrap observable.
 
-The freestanding `x86_64-krumpyos` target provides `outb(u16, u8) -> void`,
-`inb(u16) -> u8`, `cli() -> void`, `sti() -> void`, `hlt() -> void`, and
-`pause() -> void` intrinsics. They lower directly to the `out dx, al`,
-`in al, dx`, `cli`, `sti`, `hlt`, and `pause` x86-64 instructions. They are
-rejected at code generation on hosted targets such as
+The freestanding `x86_64-krumpyos` target provides low-level kernel intrinsics:
+- Port I/O: `outb(u16, u8) -> void`, `inb(u16) -> u8`
+- Interrupts & CPU control: `cli() -> void`, `sti() -> void`, `hlt() -> void`, `pause() -> void`
+- Control registers: `read_cr0() -> u64`, `write_cr0(u64) -> void`, `read_cr2() -> u64`, `read_cr3() -> u64`, `write_cr3(u64) -> void`, `read_cr4() -> u64`, `write_cr4(u64) -> void`
+- Descriptor & TLB management: `lidt(void*) -> void`, `sidt(void*) -> void`, `invlpg(void*) -> void`
+- Model-specific registers: `rdmsr(u32) -> u64`, `wrmsr(u32, u64) -> void`
+
+They are rejected at code generation on hosted targets such as
 `x86_64-unknown-linux-gnu`, where userspace lacks the privilege level to
-execute the I/O-port and interrupt-control instructions. `pause` is an x86
-spin-wait hint rather than a privileged instruction, but it stays behind the
-same target gate so freestanding kernel code can rely on a consistent backend
-boundary. CPU control-register access and IDT/exception-management helpers are
-still future work before the language is considered kernel-ready.
+execute privileged machine instructions.
 
 ## Parsed core syntax
 

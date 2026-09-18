@@ -269,7 +269,7 @@ impl<'program> Checker<'program> {
             } => {
                 let operand_type = self.check_expression(operand);
                 match operator {
-                    UnaryOperator::Negate => {
+                    UnaryOperator::Negate | UnaryOperator::BitwiseNot => {
                         if matches!(
                             operand_type,
                             ValueType::Int
@@ -284,9 +284,14 @@ impl<'program> Checker<'program> {
                         ) {
                             operand_type
                         } else {
+                            let op_name = if *operator == UnaryOperator::Negate {
+                                "negate"
+                            } else {
+                                "apply bitwise not to"
+                            };
                             self.error(
                                 *span,
-                                format!("cannot negate {}", operand_type.display_name()),
+                                format!("cannot {} {}", op_name, operand_type.display_name()),
                             );
                             ValueType::Invalid
                         }
@@ -418,7 +423,12 @@ impl<'program> Checker<'program> {
             BinaryOperator::Add
             | BinaryOperator::Subtract
             | BinaryOperator::Multiply
-            | BinaryOperator::Divide => {
+            | BinaryOperator::Divide
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::ShiftLeft
+            | BinaryOperator::ShiftRight => {
                 if left != right
                     || !matches!(
                         left,
@@ -435,7 +445,7 @@ impl<'program> Checker<'program> {
                     self.error(
                         span,
                         format!(
-                            "arithmetic requires matching integer types, found {} and {}",
+                            "integer operation requires matching integer types, found {} and {}",
                             left.display_name(),
                             right.display_name()
                         ),
@@ -538,10 +548,40 @@ impl<'program> Checker<'program> {
                 parameters: vec![Type::U16],
             };
         }
-        if matches!(name, "cli" | "sti" | "hlt" | "pause") {
+        if matches!(name, "cli" | "sti" | "hlt" | "pause" | "install_idt") {
             return ValueType::Function {
                 return_type: Type::Void,
                 parameters: Vec::new(),
+            };
+        }
+        if matches!(name, "read_cr0" | "read_cr2" | "read_cr3" | "read_cr4") {
+            return ValueType::Function {
+                return_type: Type::U64,
+                parameters: Vec::new(),
+            };
+        }
+        if matches!(name, "write_cr0" | "write_cr3" | "write_cr4") {
+            return ValueType::Function {
+                return_type: Type::Void,
+                parameters: vec![Type::U64],
+            };
+        }
+        if matches!(name, "lidt" | "sidt" | "invlpg") {
+            return ValueType::Function {
+                return_type: Type::Void,
+                parameters: vec![Type::Pointer(Box::new(Type::Void), false)],
+            };
+        }
+        if name == "rdmsr" {
+            return ValueType::Function {
+                return_type: Type::U64,
+                parameters: vec![Type::U32],
+            };
+        }
+        if name == "wrmsr" {
+            return ValueType::Function {
+                return_type: Type::Void,
+                parameters: vec![Type::U32, Type::U64],
             };
         }
         self.error(span, format!("undefined name `{name}`"));

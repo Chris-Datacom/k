@@ -64,6 +64,11 @@ pub enum TokenKind {
     Greater,
     GreaterEqual,
     Ampersand,
+    Pipe,
+    Caret,
+    Tilde,
+    LessLess,
+    GreaterGreater,
     Semicolon,
     Comma,
     LeftParen,
@@ -137,6 +142,11 @@ impl fmt::Display for TokenKind {
             Self::Greater => write!(formatter, ">"),
             Self::GreaterEqual => write!(formatter, ">="),
             Self::Ampersand => write!(formatter, "&"),
+            Self::Pipe => write!(formatter, "|"),
+            Self::Caret => write!(formatter, "^"),
+            Self::Tilde => write!(formatter, "~"),
+            Self::LessLess => write!(formatter, "<<"),
+            Self::GreaterGreater => write!(formatter, ">>"),
             Self::Semicolon => write!(formatter, ";"),
             Self::Comma => write!(formatter, ","),
             Self::LeftParen => write!(formatter, "("),
@@ -359,13 +369,24 @@ impl<'source> Lexer<'source> {
                 self.cursor += 1;
                 TokenKind::LessEqual
             }
+            b'<' if self.peek() == Some(b'<') => {
+                self.cursor += 1;
+                TokenKind::LessLess
+            }
             b'<' => TokenKind::Less,
             b'>' if self.peek() == Some(b'=') => {
                 self.cursor += 1;
                 TokenKind::GreaterEqual
             }
+            b'>' if self.peek() == Some(b'>') => {
+                self.cursor += 1;
+                TokenKind::GreaterGreater
+            }
             b'>' => TokenKind::Greater,
             b'&' => TokenKind::Ampersand,
+            b'|' => TokenKind::Pipe,
+            b'^' => TokenKind::Caret,
+            b'~' => TokenKind::Tilde,
             b';' => TokenKind::Semicolon,
             b',' => TokenKind::Comma,
             b'(' => TokenKind::LeftParen,
@@ -489,7 +510,7 @@ mod tests {
         );
         assert_eq!(
             tokens.first().map(|item| item.span),
-            Some(super::Span { start: 38, end: 44 })
+            Some(super::Span { start: 37, end: 43 })
         );
         assert_eq!(
             tokens.get(1).map(|item| &item.token),
@@ -497,7 +518,7 @@ mod tests {
         );
         assert_eq!(
             tokens.get(1).map(|item| item.span),
-            Some(super::Span { start: 45, end: 49 })
+            Some(super::Span { start: 44, end: 48 })
         );
         assert!(tokens
             .iter()
@@ -524,8 +545,8 @@ mod tests {
         assert_eq!(
             tokens.last().map(|item| item.span),
             Some(super::Span {
-                start: 415,
-                end: 415
+                start: source.len(),
+                end: source.len()
             })
         );
         assert!(tokens
