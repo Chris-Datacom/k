@@ -39,10 +39,7 @@ pub fn compile_source(source: &str) -> Result<String, CompileError> {
 }
 
 /// Compile one complete K source buffer for an explicit target.
-pub fn compile_source_for_target(
-    source: &str,
-    target: Target,
-) -> Result<String, CompileError> {
+pub fn compile_source_for_target(source: &str, target: Target) -> Result<String, CompileError> {
     if !target.is_implemented() {
         return Err(CompileError::UnsupportedTarget(target));
     }
@@ -96,12 +93,12 @@ mod tests {
 
     #[test]
     fn rejects_unimplemented_targets_before_codegen() {
-        let error = compile_source_for_target(
-            "int main() { return 0; }",
-            Target::Aarch64KrumpyOs,
-        )
-        .unwrap_err();
-        assert!(matches!(error, CompileError::UnsupportedTarget(Target::Aarch64KrumpyOs)));
+        let error = compile_source_for_target("int main() { return 0; }", Target::Aarch64KrumpyOs)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            CompileError::UnsupportedTarget(Target::Aarch64KrumpyOs)
+        ));
     }
 
     #[test]

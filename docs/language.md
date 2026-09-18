@@ -16,7 +16,7 @@ K is intended for systems work where representation and cost matter. The languag
 
 Source is UTF-8, but the initial grammar is ASCII. Whitespace is insignificant. A line comment begins with `//` and continues to the end of the line.
 
-Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digits, or `_`. Decimal integer literals contain one or more digits. Character literals use single quotes and support `\\n`, `\\r`, `\\t`, `\\\\`, and `\\'`; strings use double quotes and support the same escapes plus `\\\"`. The first reserved words are `int`, `char`, `if`, `else`, `while`, `return`, `let`, `true`, and `false`; `void` is recognized in type position.
+Identifiers begin with `a-z`, `A-Z`, or `_`, followed by those characters, digits, or `_`. Decimal integer literals contain one or more digits. Character literals use single quotes and support `\\n`, `\\r`, `\\t`, `\\\\`, and `\\'`; strings use double quotes and support the same escapes plus `\\\"`. The first reserved words are `int`, `char`, `if`, `else`, `while`, `return`, `let`, `true`, and `false`; `void` is recognized in type position, and `volatile` is recognized as a pointer qualifier in type position.
 
 The initial operator and punctuation set is `+ - * / = == != < <= > >= & ; , ( ) { } [ ] .`.
 
@@ -25,6 +25,18 @@ writes the complete zero-terminated string's payload to standard output using
 the x86-64 `write` system call; it does not allocate or require libc. This
 intrinsic is currently target-specific and exists to make the self-hosting
 bootstrap observable.
+
+The freestanding `x86_64-krumpyos` target provides `outb(u16, u8) -> void`,
+`inb(u16) -> u8`, `cli() -> void`, `sti() -> void`, `hlt() -> void`, and
+`pause() -> void` intrinsics. They lower directly to the `out dx, al`,
+`in al, dx`, `cli`, `sti`, `hlt`, and `pause` x86-64 instructions. They are
+rejected at code generation on hosted targets such as
+`x86_64-unknown-linux-gnu`, where userspace lacks the privilege level to
+execute the I/O-port and interrupt-control instructions. `pause` is an x86
+spin-wait hint rather than a privileged instruction, but it stays behind the
+same target gate so freestanding kernel code can rely on a consistent backend
+boundary. CPU control-register access and IDT/exception-management helpers are
+still future work before the language is considered kernel-ready.
 
 ## Parsed core syntax
 
@@ -37,15 +49,45 @@ int main() {
 
 The parser currently accepts function definitions with `void`, `int`, `char`,
 the fixed-width names `u8`, `u16`, `u32`, `u64`, `i32`, `i64`, and `bool`, or
-pointer return types. It also accepts pointer parameters, braced blocks,
-`let` declarations, assignments to variables or memory locations, `return`,
-`if`/`else`, `while`, expression statements, calls, character and string
-literals, unary `-`, `&`, and `*`, indexing, and binary
-arithmetic/comparison operators. String literals lower to static zero-terminated
-bytes and have type `char*`. Pointer indexing scales by the pointee size;
-bounds checks are intentionally absent.
+pointer return types, optionally `volatile`-qualified. It also accepts
+pointer parameters, braced blocks, `let` declarations, assignments to
+variables or memory locations, `return`, `if`/`else`, `while`, expression
+statements, calls, character and string literals, unary `-`, `&`, and `*`,
+indexing, C-style `(type)expression` casts, and binary
+arithmetic/comparison operators. String literals lower to static
+zero-terminated bytes and have type `char*`. Pointer indexing scales by the
+pointee size; bounds checks are intentionally absent.
 
-The grammar remains provisional. Before syntax is stabilized, the compiler must answer: declaration forms, function types, arrays, pointer spelling, casts, modules, and whether `let` permits inference everywhere.
+A cast is written `(type)expression`, for example `(u32*)address` or
+`(u64)pointer`. Casts are restricted to K's machine-model scalars: any
+pointer or fixed-width/`int` integer type may be reinterpreted as another
+pointer or integer type. `bool`, `void`, and `struct` values are rejected as
+cast sources or targets with a diagnostic; they must go through an explicit
+comparison, call, or field access instead. Widening a value that was already
+loaded with the correct sign/zero extension is free; narrowing a value emits
+a single truncating instruction so the stored bit pattern matches the target
+width. Casts have no other runtime behavior: there is no bounds checking,
+alignment checking, or provenance tracking. This is the mechanism freestanding
+code uses to name fixed hardware addresses (MMIO registers, the VGA text
+buffer, page tables) as pointers; see `examples/serial_port.k`.
+
+A pointer type may be qualified `volatile`, written before the pointee type,
+for example `volatile u16*` or `(volatile u32*)address`. The qualifier marks
+memory reached through that pointer as having effects visible outside the
+program (hardware registers, memory-mapped I/O) that the compiler must not
+optimize away: every `*pointer`, `*pointer = value`, `pointer[i]`, and
+`pointer[i] = value` performed through a `volatile`-qualified pointer lowers
+to an IR instruction explicitly tagged `volatile`, which the backend never
+merges, reorders, or elides, and which any future optimization pass must
+honor the same way. `volatile` is only meaningful on pointer types; using it
+on a non-pointer type, or with no following `*`, is a parse error. A
+`volatile` pointer and a plain pointer to the same pointee are distinct
+types under K's exact-type-match rules: converting between them (adding or
+discarding the qualifier) requires an explicit cast, the same as any other
+pointer reinterpretation. See `examples/serial_port.k` for a MMIO example
+using a `volatile u16*` into the VGA text buffer.
+
+The grammar remains provisional. Before syntax is stabilized, the compiler must answer: declaration forms, function types, arrays, module boundaries, and whether `let` permits inference everywhere.
 
 ## Structs
 

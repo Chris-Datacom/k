@@ -34,5 +34,29 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
   `i32`, `i64`, and `bool`.
 - Carried fixed-width types through parsing, semantic analysis, and IR layout
   sizing, with tests for primitive struct field sizes.
+- Added the first kernel-facing intrinsics, `outb(u16, u8) -> void` and
+  `inb(u16) -> u8`, lowering to the x86-64 `out`/`in` port instructions.
+  They are only accepted on the freestanding `x86_64-krumpyos` target and
+  are rejected at code generation on hosted targets. Added
+  `examples/serial_port.k` as a smoke test.
+- Added `cli()`, `sti()`, `hlt()`, and `pause()` intrinsics for the
+  `x86_64-krumpyos` target, lowering directly to the matching x86-64
+  instructions and rejecting hosted targets at code generation.
+- Added explicit `(type)expression` casts between pointers and integers of
+  any width, restricted to K's scalar machine-model types (`bool`, `void`,
+  and `struct` are rejected as cast sources or targets). Widening and
+  pointer-reinterpretation casts are free; narrowing casts emit a single
+  truncating instruction. This is the mechanism for naming fixed hardware
+  addresses (MMIO, the VGA text buffer) as pointers, and
+  `examples/serial_port.k` now demonstrates it.
+- Added a `volatile` pointer qualifier (`volatile T*`). Loads and stores
+  performed through a volatile pointer (`*ptr`, `*ptr = value`, `ptr[i]`,
+  `ptr[i] = value`) are lowered to IR instructions explicitly tagged
+  `volatile`, which the backend never merges, reorders, or elides, and
+  which any future optimization pass is required to honor the same way.
+  `volatile` and non-`volatile` pointers to the same pointee are distinct
+  types; converting between them requires an explicit cast, matching K's
+  exact-type-match rules. `examples/serial_port.k`'s VGA buffer now uses
+  `volatile u16*`.
 - The next language milestone is exact-width arithmetic, conversions,
   overflow rules, and backend load/store lowering.

@@ -45,7 +45,7 @@ enum ValueType {
     I32,
     I64,
     Bool,
-    Pointer(Box<ValueType>),
+    Pointer(Box<ValueType>, bool),
     Struct(String),
     Function {
         return_type: Type,
@@ -67,7 +67,9 @@ impl ValueType {
             Type::I32 => Self::I32,
             Type::I64 => Self::I64,
             Type::Bool => Self::Bool,
-            Type::Pointer(inner) => Self::Pointer(Box::new(Self::from_type(inner))),
+            Type::Pointer(inner, volatile) => {
+                Self::Pointer(Box::new(Self::from_type(inner)), *volatile)
+            }
             Type::Struct(name) => Self::Struct(name.clone()),
         }
     }
@@ -84,7 +86,7 @@ impl ValueType {
             Self::I32 => "i32",
             Self::I64 => "i64",
             Self::Bool => "bool",
-            Self::Pointer(_) => "pointer",
+            Self::Pointer(_, _) => "pointer",
             Self::Struct(_) => "struct",
             Self::Function { .. } => "function",
             Self::Invalid => "invalid expression",
@@ -257,7 +259,7 @@ impl<'program> Checker<'program> {
         match expression {
             Expression::Integer { .. } => ValueType::Int,
             Expression::Character { .. } => ValueType::Char,
-            Expression::String { .. } => ValueType::Pointer(Box::new(ValueType::Char)),
+            Expression::String { .. } => ValueType::Pointer(Box::new(ValueType::Char), false),
             Expression::Boolean { .. } => ValueType::Bool,
             Expression::Name { value, span } => self.resolve_name(value, *span),
             Expression::Unary {
@@ -293,11 +295,11 @@ impl<'program> Checker<'program> {
                         if matches!(operand_type, ValueType::Invalid) {
                             ValueType::Invalid
                         } else {
-                            ValueType::Pointer(Box::new(operand_type))
+                            ValueType::Pointer(Box::new(operand_type), false)
                         }
                     }
                     UnaryOperator::Dereference => match operand_type {
-                        ValueType::Pointer(inner) => *inner,
+                        ValueType::Pointer(inner, _) => *inner,
                         ValueType::Invalid => ValueType::Invalid,
                         other => {
                             self.error(
@@ -329,7 +331,7 @@ impl<'program> Checker<'program> {
                 let index_type = self.check_expression(index);
                 self.require_same(&ValueType::Int, &index_type, index.span(), "index");
                 match base_type {
-                    ValueType::Pointer(inner) => *inner,
+                    ValueType::Pointer(inner, _) => *inner,
                     ValueType::Invalid => ValueType::Invalid,
                     other => {
                         self.error(*span, format!("cannot index {}", other.display_name()));
@@ -341,7 +343,7 @@ impl<'program> Checker<'program> {
                 let base_type = self.check_expression(base);
                 let struct_name = match base_type {
                     ValueType::Struct(name) => Some(name),
-                    ValueType::Pointer(inner) => match *inner {
+                    ValueType::Pointer(inner, _) => match *inner {
                         ValueType::Struct(name) => Some(name),
                         _ => None,
                     },
@@ -360,6 +362,25 @@ impl<'program> Checker<'program> {
                     self.error(*span, format!("unknown field `{field}` on struct `{name}`"));
                 }
                 ValueType::Invalid
+            }
+            Expression::Cast { ty, operand, span } => {
+                let operand_type = self.check_expression(operand);
+                let target_type = ValueType::from_type(ty);
+                if operand_type == ValueType::Invalid {
+                    ValueType::Invalid
+                } else if is_castable(&operand_type) && is_castable(&target_type) {
+                    target_type
+                } else {
+                    self.error(
+                        *span,
+                        format!(
+                            "cannot cast {} to {}",
+                            operand_type.display_name(),
+                            target_type.display_name()
+                        ),
+                    );
+                    ValueType::Invalid
+                }
             }
         }
     }
@@ -502,7 +523,25 @@ impl<'program> Checker<'program> {
         if name == "print" {
             return ValueType::Function {
                 return_type: Type::Void,
-                parameters: vec![Type::Pointer(Box::new(Type::Char))],
+                parameters: vec![Type::Pointer(Box::new(Type::Char), false)],
+            };
+        }
+        if name == "outb" {
+            return ValueType::Function {
+                return_type: Type::Void,
+                parameters: vec![Type::U16, Type::U8],
+            };
+        }
+        if name == "inb" {
+            return ValueType::Function {
+                return_type: Type::U8,
+                parameters: vec![Type::U16],
+            };
+        }
+        if matches!(name, "cli" | "sti" | "hlt" | "pause") {
+            return ValueType::Function {
+                return_type: Type::Void,
+                parameters: Vec::new(),
             };
         }
         self.error(span, format!("undefined name `{name}`"));
@@ -554,6 +593,25 @@ impl<'program> Checker<'program> {
     }
 }
 
+/// Casts are restricted to K's machine-model values: pointers and integers
+/// of any width may be reinterpreted as each other or as another pointer or
+/// integer type. `bool`, `void`, and `struct` values are not cast targets or
+/// sources; they must go through an explicit field or dereference first.
+fn is_castable(value_type: &ValueType) -> bool {
+    matches!(
+        value_type,
+        ValueType::Pointer(_, _)
+            | ValueType::Int
+            | ValueType::Char
+            | ValueType::U8
+            | ValueType::U16
+            | ValueType::U32
+            | ValueType::U64
+            | ValueType::I32
+            | ValueType::I64
+    )
+}
+
 fn type_name(ty: &Type) -> &'static str {
     match ty {
         Type::Void => "void",
@@ -566,7 +624,7 @@ fn type_name(ty: &Type) -> &'static str {
         Type::I32 => "i32",
         Type::I64 => "i64",
         Type::Bool => "bool",
-        Type::Pointer(_) => "pointer",
+        Type::Pointer(_, _) => "pointer",
         Type::Struct(_) => "struct",
     }
 }
@@ -622,6 +680,16 @@ mod tests {
     }
 
     #[test]
+    fn krumpyos_intrinsics_have_expected_signatures() {
+        let program = parse("void idle() { cli(); sti(); hlt(); pause(); }").unwrap();
+        assert!(check(&program).is_ok());
+
+        let program = parse("void idle() { cli(1); }").unwrap();
+        let errors = check(&program).unwrap_err();
+        assert!(errors[0].message.contains("expected 0 arguments, found 1"));
+    }
+
+    #[test]
     fn rejects_value_return_from_void_function() {
         let program = parse("void bad() { return 1; }").unwrap();
         let errors = check(&program).unwrap_err();
@@ -642,5 +710,56 @@ mod tests {
         assert!(check(&bad).unwrap_err()[0]
             .message
             .contains("unknown field"));
+    }
+
+    #[test]
+    fn accepts_pointer_integer_and_pointer_pointer_casts() {
+        let program = parse(
+            "u32* mmio(u64 address) { return (u32*)address; } u64 addr_of(u32* ptr) { return (u64)ptr; } char* reinterpret(u32* ptr) { return (char*)ptr; } u8 truncate(u64 value) { return (u8)value; }",
+        )
+        .unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn rejects_casts_involving_bool_void_or_struct() {
+        let bool_cast = parse("bool bad(int value) { return (bool)value; }").unwrap();
+        assert!(check(&bool_cast).unwrap_err()[0]
+            .message
+            .contains("cannot cast int to bool"));
+
+        let struct_cast =
+            parse("struct Token { int kind; } u64 bad(struct Token token) { return (u64)token; }")
+                .unwrap();
+        assert!(check(&struct_cast).unwrap_err()[0]
+            .message
+            .contains("cannot cast struct"));
+    }
+
+    #[test]
+    fn accepts_reads_and_writes_through_volatile_pointers() {
+        let program = parse(
+            "void poke(volatile u16* port) { *port = (u16)1; } u16 peek(volatile u16* port) { return *port; } void poke_indexed(volatile u16* buffer, int index) { buffer[index] = (u16)1; }",
+        )
+        .unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn rejects_implicit_conversion_between_volatile_and_plain_pointers() {
+        let program =
+            parse("void take(u16* port) { return; } void call(volatile u16* port) { take(port); }")
+                .unwrap();
+        let errors = check(&program).unwrap_err();
+        assert!(errors[0].message.contains("argument requires pointer"));
+    }
+
+    #[test]
+    fn casting_away_volatile_is_explicit() {
+        let program = parse(
+            "void take(u16* port) { return; } void call(volatile u16* port) { take((u16*)port); }",
+        )
+        .unwrap();
+        assert!(check(&program).is_ok());
     }
 }

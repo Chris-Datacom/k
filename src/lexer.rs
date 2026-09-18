@@ -489,7 +489,7 @@ mod tests {
         );
         assert_eq!(
             tokens.first().map(|item| item.span),
-            Some(super::Span { start: 37, end: 43 })
+            Some(super::Span { start: 38, end: 44 })
         );
         assert_eq!(
             tokens.get(1).map(|item| &item.token),
@@ -497,7 +497,7 @@ mod tests {
         );
         assert_eq!(
             tokens.get(1).map(|item| item.span),
-            Some(super::Span { start: 44, end: 48 })
+            Some(super::Span { start: 45, end: 49 })
         );
         assert!(tokens
             .iter()
@@ -524,8 +524,8 @@ mod tests {
         assert_eq!(
             tokens.last().map(|item| item.span),
             Some(super::Span {
-                start: 392,
-                end: 392
+                start: 415,
+                end: 415
             })
         );
         assert!(tokens

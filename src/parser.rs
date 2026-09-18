@@ -63,7 +63,10 @@ pub enum Type {
     I32,
     I64,
     Bool,
-    Pointer(Box<Type>),
+    /// A pointer to `Type`. The `bool` marks whether the pointee is
+    /// `volatile`-qualified (`volatile T*`): accesses through it must never
+    /// be reordered, merged, or elided by any pass, current or future.
+    Pointer(Box<Type>, bool),
     Struct(String),
 }
 
@@ -161,6 +164,11 @@ pub enum Expression {
     Field {
         base: Box<Expression>,
         field: String,
+        span: Span,
+    },
+    Cast {
+        ty: Type,
+        operand: Box<Expression>,
         span: Span,
     },
 }
@@ -302,6 +310,7 @@ impl Parser {
     }
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
+        let volatile_span = self.consume_volatile_keyword();
         let mut ty = match self.take().token {
             TokenKind::Identifier(value) if value == "void" => Ok(Type::Void),
             TokenKind::Struct => {
@@ -319,10 +328,31 @@ impl Parser {
             TokenKind::Bool => Ok(Type::Bool),
             token => Err(self.error_expected("type", token)),
         }?;
+        let mut pending_volatile = volatile_span.is_some();
         while self.consume(TokenKind::Star) {
-            ty = Type::Pointer(Box::new(ty));
+            ty = Type::Pointer(Box::new(ty), pending_volatile);
+            pending_volatile = false;
+        }
+        if let Some(span) = volatile_span {
+            if !matches!(ty, Type::Pointer(..)) {
+                return Err(ParseError {
+                    span,
+                    message: "volatile is only valid on pointer types".to_owned(),
+                });
+            }
         }
         Ok(ty)
+    }
+
+    /// Consumes a leading `volatile` qualifier if present and returns its
+    /// span. `volatile` is a soft keyword, like `void`, rather than a
+    /// reserved token.
+    fn consume_volatile_keyword(&mut self) -> Option<Span> {
+        if matches!(&self.peek().token, TokenKind::Identifier(value) if value == "volatile") {
+            Some(self.take().span)
+        } else {
+            None
+        }
     }
 
     fn parse_block(&mut self) -> Result<Block, ParseError> {
@@ -511,6 +541,20 @@ impl Parser {
                     operand: Box::new(operand),
                 }
             }
+            TokenKind::LeftParen if self.looks_like_type_start() => {
+                let start = self.take().span.start;
+                let ty = self.parse_type()?;
+                self.expect(TokenKind::RightParen)?;
+                let operand = self.parse_prefix_expression()?;
+                Expression::Cast {
+                    ty,
+                    span: Span {
+                        start,
+                        end: operand.span().end,
+                    },
+                    operand: Box::new(operand),
+                }
+            }
             TokenKind::LeftParen => {
                 self.take();
                 let expression = self.parse_expression()?;
@@ -520,6 +564,32 @@ impl Parser {
             _ => self.parse_primary_expression()?,
         };
         self.parse_postfix_expression(expression)
+    }
+
+    /// Returns true when the token after `(` starts a type, which means this
+    /// parenthesized group is a cast rather than a grouped expression. Type
+    /// keywords (`int`, `char`, the fixed-width names, `bool`, `struct`) and
+    /// the `void`/`volatile` identifiers never begin a primary expression,
+    /// so this lookahead is unambiguous.
+    fn looks_like_type_start(&self) -> bool {
+        matches!(
+            self.tokens.get(self.cursor + 1).map(|token| &token.token),
+            Some(
+                TokenKind::Int
+                    | TokenKind::Char
+                    | TokenKind::U8
+                    | TokenKind::U16
+                    | TokenKind::U32
+                    | TokenKind::U64
+                    | TokenKind::I32
+                    | TokenKind::I64
+                    | TokenKind::Bool
+                    | TokenKind::Struct
+            )
+        ) || matches!(
+            self.tokens.get(self.cursor + 1).map(|token| &token.token),
+            Some(TokenKind::Identifier(value)) if value == "void" || value == "volatile"
+        )
     }
 
     fn parse_primary_expression(&mut self) -> Result<Expression, ParseError> {
@@ -672,7 +742,7 @@ impl Expression {
             | Self::Unary { span, .. }
             | Self::Binary { span, .. }
             | Self::Call { span, .. } => *span,
-            Self::Index { span, .. } | Self::Field { span, .. } => *span,
+            Self::Index { span, .. } | Self::Field { span, .. } | Self::Cast { span, .. } => *span,
         }
     }
 }
@@ -744,7 +814,7 @@ mod tests {
         let program = parse("int read(int* ptr) { return ptr[1]; }").unwrap();
         assert!(matches!(
             program.functions[0].parameters[0].ty,
-            Type::Pointer(_)
+            Type::Pointer(_, false)
         ));
         assert!(matches!(
             program.functions[0].body.statements[0],
@@ -794,6 +864,25 @@ mod tests {
     }
 
     #[test]
+    fn parses_krumpyos_intrinsic_calls() {
+        let program = parse("void idle() { cli(); sti(); hlt(); pause(); }").unwrap();
+        assert!(matches!(
+            program.functions[0].body.statements[0],
+            Statement::Expression {
+                expression: Expression::Call { .. },
+                ..
+            }
+        ));
+        assert!(matches!(
+            program.functions[0].body.statements[3],
+            Statement::Expression {
+                expression: Expression::Call { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn parses_structs_and_field_access() {
         let program = parse(
             "struct Token { int kind; int start; } int read(struct Token* token) { return token.kind; }",
@@ -822,6 +911,71 @@ mod tests {
                 ty: Type::Struct(ref name),
                 ..
             } if name == "Token"
+        ));
+    }
+
+    #[test]
+    fn parses_pointer_and_integer_casts() {
+        let program = parse(
+            "u32* mmio(u64 address) { return (u32*)address; } u64 addr_of(u32* ptr) { return (u64)ptr; }",
+        )
+        .unwrap();
+        assert!(matches!(
+            program.functions[0].body.statements[0],
+            Statement::Return {
+                value: Some(Expression::Cast {
+                    ty: Type::Pointer(ref inner, false),
+                    ..
+                }),
+                ..
+            } if **inner == Type::U32
+        ));
+        assert!(matches!(
+            program.functions[1].body.statements[0],
+            Statement::Return {
+                value: Some(Expression::Cast { ty: Type::U64, .. }),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_volatile_pointer_types() {
+        let program = parse(
+            "void poke(volatile u16* port) { *port = 1; } u16 peek(volatile u16* port) { return *port; }",
+        )
+        .unwrap();
+        assert!(matches!(
+            program.functions[0].parameters[0].ty,
+            Type::Pointer(ref inner, true) if **inner == Type::U16
+        ));
+        let program = parse("u16* mmio(u64 address) { return (volatile u16*)address; }").unwrap();
+        assert!(matches!(
+            program.functions[0].body.statements[0],
+            Statement::Return {
+                value: Some(Expression::Cast {
+                    ty: Type::Pointer(ref inner, true),
+                    ..
+                }),
+                ..
+            } if **inner == Type::U16
+        ));
+    }
+
+    #[test]
+    fn rejects_volatile_qualifier_on_non_pointer_types() {
+        assert!(parse("void broken(volatile u16 value) { return; }").is_err());
+    }
+
+    #[test]
+    fn parenthesized_expressions_still_group_without_casting() {
+        let program = parse("int main() { return (1 + 2) * 3; }").unwrap();
+        assert!(matches!(
+            program.functions[0].body.statements[0],
+            Statement::Return {
+                value: Some(Expression::Binary { .. }),
+                ..
+            }
         ));
     }
 }

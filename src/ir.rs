@@ -23,7 +23,10 @@ pub enum IrType {
     I32,
     I64,
     Bool,
-    Pointer(Box<IrType>),
+    /// A pointer to `IrType`. The `bool` marks a `volatile`-qualified
+    /// pointee: `Load`/`Store`/dereference instructions through it are
+    /// tagged `volatile` and must never be reordered, merged, or elided.
+    Pointer(Box<IrType>, bool),
     Struct(String),
 }
 
@@ -55,9 +58,11 @@ pub enum Instruction {
     },
     Load {
         ty: IrType,
+        volatile: bool,
     },
     Store {
         ty: IrType,
+        volatile: bool,
     },
     Scale {
         bytes: i64,
@@ -65,6 +70,7 @@ pub enum Instruction {
     Unary {
         operator: UnaryOperator,
         ty: IrType,
+        volatile: bool,
     },
     Binary {
         operator: BinaryOperator,
@@ -76,6 +82,13 @@ pub enum Instruction {
         ty: IrType,
     },
     PrintString(Vec<u8>),
+    OutB,
+    InB,
+    Cli,
+    Sti,
+    Hlt,
+    Pause,
+    Cast(IrType),
     Pop,
     Branch {
         then_block: usize,
@@ -264,6 +277,7 @@ fn fold_expression(expression: &mut Expression) {
             fold_expression(base);
             fold_expression(index);
         }
+        Expression::Cast { operand, .. } => fold_expression(operand),
         Expression::Integer { .. }
         | Expression::Character { .. }
         | Expression::String { .. }
@@ -471,15 +485,16 @@ fn expression_type_with_locals(expression: &Expression, locals: &[Local]) -> IrT
             operand,
             ..
         } => match expression_type_with_locals(operand, locals) {
-            IrType::Pointer(inner) => *inner,
+            IrType::Pointer(inner, _) => *inner,
             _ => IrType::Int,
         },
         Expression::Index { base, .. } => match expression_type_with_locals(base, locals) {
-            IrType::Pointer(inner) => *inner,
+            IrType::Pointer(inner, _) => *inner,
             _ => IrType::Int,
         },
         Expression::Unary { operand, .. } => expression_type_with_locals(operand, locals),
         Expression::Binary { left, .. } => expression_type_with_locals(left, locals),
+        Expression::Cast { ty, .. } => ir_type(ty),
         _ => expression_type(expression),
     }
 }
@@ -520,6 +535,7 @@ impl FunctionBuilder<'_> {
                     id,
                     Instruction::Store {
                         ty: self.expression_type(value),
+                        volatile: self.lvalue_volatility(target),
                     },
                 );
             }
@@ -639,11 +655,14 @@ impl FunctionBuilder<'_> {
                     self.lvalue(id, operand);
                 } else {
                     self.expression(id, operand);
+                    let volatile = matches!(operator, UnaryOperator::Dereference)
+                        && self.is_volatile_pointer(operand);
                     self.push(
                         id,
                         Instruction::Unary {
                             operator: *operator,
                             ty: self.expression_type(expression),
+                            volatile,
                         },
                     );
                 }
@@ -671,6 +690,30 @@ impl FunctionBuilder<'_> {
                     if value == "print" && arguments.len() == 1 {
                         if let Expression::String { value, .. } = &arguments[0] {
                             self.push(id, Instruction::PrintString(value.clone()));
+                            return;
+                        }
+                    }
+                    if value == "outb" && arguments.len() == 2 {
+                        self.expression(id, &arguments[0]);
+                        self.expression(id, &arguments[1]);
+                        self.push(id, Instruction::OutB);
+                        return;
+                    }
+                    if value == "inb" && arguments.len() == 1 {
+                        self.expression(id, &arguments[0]);
+                        self.push(id, Instruction::InB);
+                        return;
+                    }
+                    if arguments.is_empty() {
+                        let instruction = match value.as_str() {
+                            "cli" => Some(Instruction::Cli),
+                            "sti" => Some(Instruction::Sti),
+                            "hlt" => Some(Instruction::Hlt),
+                            "pause" => Some(Instruction::Pause),
+                            _ => None,
+                        };
+                        if let Some(instruction) = instruction {
+                            self.push(id, instruction);
                             return;
                         }
                     }
@@ -702,13 +745,14 @@ impl FunctionBuilder<'_> {
                     id,
                     Instruction::Binary {
                         operator: BinaryOperator::Add,
-                        ty: IrType::Pointer(Box::new(self.expression_type(expression))),
+                        ty: IrType::Pointer(Box::new(self.expression_type(expression)), false),
                     },
                 );
                 self.push(
                     id,
                     Instruction::Load {
                         ty: self.expression_type(expression),
+                        volatile: self.is_volatile_pointer(base),
                     },
                 );
             }
@@ -718,8 +762,13 @@ impl FunctionBuilder<'_> {
                     id,
                     Instruction::Load {
                         ty: self.expression_type(expression),
+                        volatile: false,
                     },
                 );
+            }
+            Expression::Cast { ty, operand, .. } => {
+                self.expression(id, operand);
+                self.push(id, Instruction::Cast(ir_type(ty)));
             }
         }
     }
@@ -732,7 +781,7 @@ impl FunctionBuilder<'_> {
                         id,
                         Instruction::AddressLocal {
                             name: value.clone(),
-                            ty: IrType::Pointer(Box::new(local.ty.clone())),
+                            ty: IrType::Pointer(Box::new(local.ty.clone()), false),
                         },
                     );
                 }
@@ -755,7 +804,7 @@ impl FunctionBuilder<'_> {
                     id,
                     Instruction::Binary {
                         operator: BinaryOperator::Add,
-                        ty: IrType::Pointer(Box::new(self.expression_type(expression))),
+                        ty: IrType::Pointer(Box::new(self.expression_type(expression)), false),
                     },
                 );
             }
@@ -770,7 +819,7 @@ impl FunctionBuilder<'_> {
                 let base_type = self.expression_type(base);
                 let name = match base_type {
                     IrType::Struct(name) => name,
-                    IrType::Pointer(inner) => match *inner {
+                    IrType::Pointer(inner, _) => match *inner {
                         IrType::Struct(name) => name,
                         _ => return,
                     },
@@ -796,13 +845,37 @@ impl FunctionBuilder<'_> {
             id,
             Instruction::FieldAddress {
                 offset: field_layout.offset,
-                ty: IrType::Pointer(Box::new(field_layout.ty.clone())),
+                ty: IrType::Pointer(Box::new(field_layout.ty.clone()), false),
             },
         );
     }
 
     fn local(&self, name: &str) -> Option<&Local> {
         self.locals.iter().find(|local| local.name == name)
+    }
+
+    /// Returns true when `pointer_expression` statically has a
+    /// volatile-qualified pointer type, meaning a load or store through it
+    /// must never be reordered, merged, or elided.
+    fn is_volatile_pointer(&self, pointer_expression: &Expression) -> bool {
+        matches!(
+            self.expression_type(pointer_expression),
+            IrType::Pointer(_, true)
+        )
+    }
+
+    /// Returns true when assigning through `target` accesses memory behind
+    /// a volatile-qualified pointer (`*ptr = ...` or `ptr[i] = ...`).
+    fn lvalue_volatility(&self, target: &Expression) -> bool {
+        match target {
+            Expression::Unary {
+                operator: UnaryOperator::Dereference,
+                operand,
+                ..
+            } => self.is_volatile_pointer(operand),
+            Expression::Index { base, .. } => self.is_volatile_pointer(base),
+            _ => false,
+        }
     }
 
     fn expression_type(&self, expression: &Expression) -> IrType {
@@ -815,7 +888,7 @@ impl FunctionBuilder<'_> {
                 let base_type = self.expression_type(base);
                 let name = match base_type {
                     IrType::Struct(name) => name,
-                    IrType::Pointer(inner) => match *inner {
+                    IrType::Pointer(inner, _) => match *inner {
                         IrType::Struct(name) => name,
                         _ => return IrType::Int,
                     },
@@ -828,7 +901,7 @@ impl FunctionBuilder<'_> {
                     .unwrap_or(IrType::Int)
             }
             Expression::Index { base, .. } => match self.expression_type(base) {
-                IrType::Pointer(inner) => *inner,
+                IrType::Pointer(inner, _) => *inner,
                 _ => IrType::Int,
             },
             Expression::Unary {
@@ -836,11 +909,12 @@ impl FunctionBuilder<'_> {
                 operand,
                 ..
             } => match self.expression_type(operand) {
-                IrType::Pointer(inner) => *inner,
+                IrType::Pointer(inner, _) => *inner,
                 _ => IrType::Int,
             },
             Expression::Unary { operand, .. } => self.expression_type(operand),
             Expression::Binary { left, .. } => self.expression_type(left),
+            Expression::Cast { ty, .. } => ir_type(ty),
             _ => expression_type(expression),
         }
     }
@@ -872,16 +946,17 @@ fn expression_type(expression: &Expression) -> IrType {
     match expression {
         Expression::Integer { .. } => IrType::Int,
         Expression::Character { .. } => IrType::Char,
-        Expression::String { .. } => IrType::Pointer(Box::new(IrType::Char)),
+        Expression::String { .. } => IrType::Pointer(Box::new(IrType::Char), false),
         Expression::Boolean { .. } => IrType::Bool,
         Expression::Name { .. } => IrType::Int,
         Expression::Unary {
             operator: UnaryOperator::AddressOf,
             operand,
             ..
-        } => IrType::Pointer(Box::new(expression_type(operand))),
+        } => IrType::Pointer(Box::new(expression_type(operand)), false),
         Expression::Unary { operand, .. } => expression_type(operand),
         Expression::Binary { left, .. } => expression_type(left),
+        Expression::Cast { ty, .. } => ir_type(ty),
         Expression::Call { .. } | Expression::Index { .. } | Expression::Field { .. } => {
             IrType::Int
         }
@@ -892,7 +967,8 @@ fn is_void_expression(expression: &Expression) -> bool {
     matches!(
         expression,
         Expression::Call { callee, .. }
-            if matches!(callee.as_ref(), Expression::Name { value, .. } if value == "print")
+            if matches!(callee.as_ref(), Expression::Name { value, .. }
+                if matches!(value.as_str(), "print" | "outb" | "cli" | "sti" | "hlt" | "pause"))
     )
 }
 
@@ -908,14 +984,14 @@ fn ir_type(ty: &Type) -> IrType {
         Type::I32 => IrType::I32,
         Type::I64 => IrType::I64,
         Type::Bool => IrType::Bool,
-        Type::Pointer(inner) => IrType::Pointer(Box::new(ir_type(inner))),
+        Type::Pointer(inner, volatile) => IrType::Pointer(Box::new(ir_type(inner)), *volatile),
         Type::Struct(name) => IrType::Struct(name.clone()),
     }
 }
 
 fn pointee_size(ty: &IrType) -> i64 {
     match ty {
-        IrType::Pointer(inner) => pointee_size(inner),
+        IrType::Pointer(inner, _) => pointee_size(inner),
         IrType::Char => 1,
         IrType::U8 => 1,
         IrType::U16 => 2,
@@ -929,7 +1005,7 @@ fn pointee_size(ty: &IrType) -> i64 {
 fn ir_size(ty: &IrType) -> i64 {
     match ty {
         IrType::Struct(_) => 8,
-        IrType::Void | IrType::Int | IrType::Pointer(_) => 8,
+        IrType::Void | IrType::Int | IrType::Pointer(_, _) => 8,
         IrType::Char | IrType::Bool => 1,
         IrType::U8 => 1,
         IrType::U16 => 2,
@@ -969,6 +1045,74 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn krumpyos_intrinsics_lower_without_stack_pops() {
+        let program = parse("void idle() { cli(); sti(); hlt(); pause(); }").unwrap();
+        let ir = lower(&program).unwrap();
+        let instructions = &ir.functions["idle"].blocks[0].instructions;
+        assert_eq!(
+            instructions,
+            &[
+                Instruction::Cli,
+                Instruction::Sti,
+                Instruction::Hlt,
+                Instruction::Pause
+            ]
+        );
+    }
+
+    #[test]
+    fn marks_volatile_pointer_dereference_and_store_instructions() {
+        let program = parse(
+            "void poke(volatile u16* port) { *port = (u16)1; } u16 peek(volatile u16* port) { return *port; }",
+        )
+        .unwrap();
+        let ir = lower(&program).unwrap();
+        let poke = &ir.functions["poke"].blocks[0].instructions;
+        assert!(poke
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Store { volatile: true, .. })));
+        let peek = &ir.functions["peek"].blocks[0].instructions;
+        assert!(peek
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Unary { volatile: true, .. })));
+    }
+
+    #[test]
+    fn marks_volatile_indexed_load_and_store_instructions() {
+        let program = parse(
+            "void write(volatile u16* buffer, int index) { buffer[index] = (u16)1; } u16 read(volatile u16* buffer, int index) { return buffer[index]; }",
+        )
+        .unwrap();
+        let ir = lower(&program).unwrap();
+        let write = &ir.functions["write"].blocks[0].instructions;
+        assert!(write
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Store { volatile: true, .. })));
+        let read = &ir.functions["read"].blocks[0].instructions;
+        assert!(read
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Load { volatile: true, .. })));
+    }
+
+    #[test]
+    fn does_not_mark_plain_pointer_accesses_as_volatile() {
+        let program =
+            parse("void write(u16* buffer, int index) { buffer[index] = (u16)1; }").unwrap();
+        let ir = lower(&program).unwrap();
+        let write = &ir.functions["write"].blocks[0].instructions;
+        assert!(write.iter().any(|instruction| matches!(
+            instruction,
+            Instruction::Store {
+                volatile: false,
+                ..
+            }
+        )));
+        assert!(!write
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Store { volatile: true, .. })));
     }
 
     #[test]

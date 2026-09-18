@@ -21,6 +21,7 @@ cargo run -- check examples/hello.k
 cargo run -- emit examples/hello.k
 cargo run -- compile examples/hello.k target/hello.s
 cargo run -- compile examples/hello.k target/hello.s x86_64-krumpyos
+cargo run -- compile examples/serial_port.k target/serial_port.s x86_64-krumpyos
 ```
 
 The command-line tool currently exposes one diagnostic command:
@@ -79,6 +80,7 @@ will remove it only after two reproducible releases have been built by K.
   `k compile` is the host file-to-artifact interface.
 - `src/lib.rs`: compiler-library boundary and future pipeline stages.
 - `src/main.rs`: host-side command-line interface.
+- `linker/x86_64-krumpyos.ld`: kernel ELF layout and boot-stub entry contract.
 - `compiler/lexer.k`: first K-written compiler component, with complete
   identifier and decimal-integer spans in a caller-owned-buffer scanner.
 - `compiler/hello.k`: minimal K program using the freestanding `print`
@@ -89,3 +91,5 @@ will remove it only after two reproducible releases have been built by K.
 - `docs/bootstrap.md`: route from Rust implementation to self-hosting.
 - `scripts/`: reproducible bootstrap and source-manifest checks.
 - `examples/hello.k`: a tiny source fixture used by the documentation.
+- `examples/serial_port.k`: a freestanding I/O-port smoke test (`outb`/`inb`)
+  for the `x86_64-krumpyos` kernel-facing target.

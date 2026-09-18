@@ -130,6 +130,12 @@ scripts/check-bootstrap.ps1 # Windows equivalent of the manifest check
 The source manifest is deliberately explicit so future K-built stages can
 reproduce the exact compiler input set.
 
+The kernel-facing ELF link contract is defined by
+[`linker/x86_64-krumpyos.ld`](../linker/x86_64-krumpyos.ld). It selects
+`_start` as the image entry point and lays out the image from physical address
+`0x00010000`; the BIOS boot stub provides that address and establishes the
+machine state before transferring control to K code.
+
 ## Stage 3: K builds K
 
 Compile the K compiler source with the Rust host compiler, then use that resulting K compiler to compile itself. The two outputs must agree on a defined set of source programs. This is the first self-hosting milestone.

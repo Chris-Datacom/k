@@ -91,7 +91,7 @@ fn memory_width(ty: &IrType) -> (&'static str, &'static str, &'static str, &'sta
         IrType::U16 => ("WORD", "eax", "ax", "movzx"),
         IrType::U32 => ("DWORD", "eax", "eax", "mov"),
         IrType::I32 => ("DWORD", "rax", "eax", "movsxd"),
-        IrType::U64 | IrType::I64 | IrType::Int | IrType::Pointer(_) | IrType::Struct(_) => {
+        IrType::U64 | IrType::I64 | IrType::Int | IrType::Pointer(_, _) | IrType::Struct(_) => {
             ("QWORD", "rax", "rax", "mov")
         }
         IrType::Void => ("QWORD", "rax", "rax", "mov"),
@@ -188,7 +188,9 @@ impl Generator {
                 }
                 Instruction::PrintString(value) => {
                     if self.target != Target::X86_64SystemV {
-                        return Err(self.error("print is only available on the Linux System V target"));
+                        return Err(
+                            self.error("print is only available on the Linux System V target")
+                        );
                     }
                     let label = self.fresh_label("string");
                     self.rodata.push_str(&format!("{label}:\n  .byte "));
@@ -230,26 +232,39 @@ impl Generator {
                             .push_str(&format!("  add rax, {offset}\n  push rax\n"));
                     }
                 }
-                Instruction::Load { ty } => {
+                Instruction::Load { ty, volatile } => {
                     self.output.push_str("  pop rax\n");
+                    if *volatile {
+                        self.output.push_str("  ; volatile load\n");
+                    }
                     emit_load(&mut self.output, "[rax]", ty);
                 }
                 Instruction::Scale { bytes } => {
                     self.output
                         .push_str(&format!("  pop rax\n  imul rax, {bytes}\n  push rax\n"));
                 }
-                Instruction::Store { ty } => {
+                Instruction::Store { ty, volatile } => {
                     self.output.push_str("  pop rax\n  pop rdi\n");
+                    if *volatile {
+                        self.output.push_str("  ; volatile store\n");
+                    }
                     let (width, _, register, _) = memory_width(ty);
                     self.output
                         .push_str(&format!("  mov {width} PTR [rdi], {register}\n"));
                 }
-                Instruction::Unary { operator, ty } => match operator {
+                Instruction::Unary {
+                    operator,
+                    ty,
+                    volatile,
+                } => match operator {
                     UnaryOperator::Negate => {
                         self.output.push_str("  pop rax\n  neg rax\n  push rax\n")
                     }
                     UnaryOperator::Dereference => {
                         self.output.push_str("  pop rax\n");
+                        if *volatile {
+                            self.output.push_str("  ; volatile load\n");
+                        }
                         emit_load(&mut self.output, "[rax]", ty);
                     }
                     UnaryOperator::AddressOf => {
@@ -275,6 +290,58 @@ impl Generator {
                     }
                     self.output
                         .push_str(&format!("  call {name}\n  push rax\n"));
+                }
+                Instruction::OutB => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self
+                            .error("outb is only available on the freestanding krumpyos target"));
+                    }
+                    self.output.push_str("  pop rax\n  pop rdx\n  out dx, al\n");
+                }
+                Instruction::InB => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(
+                            self.error("inb is only available on the freestanding krumpyos target")
+                        );
+                    }
+                    self.output
+                        .push_str("  pop rdx\n  in al, dx\n  movzx eax, al\n  push rax\n");
+                }
+                instruction @ (Instruction::Cli
+                | Instruction::Sti
+                | Instruction::Hlt
+                | Instruction::Pause) => {
+                    if self.target != Target::X86_64KrumpyOs {
+                        return Err(self.error(
+                            "privileged interrupt intrinsics (cli, sti, hlt, and pause) are only available on the freestanding krumpyos target",
+                        ));
+                    }
+                    let mnemonic = match instruction {
+                        Instruction::Cli => "cli",
+                        Instruction::Sti => "sti",
+                        Instruction::Hlt => "hlt",
+                        Instruction::Pause => "pause",
+                        _ => unreachable!(),
+                    };
+                    self.output.push_str(&format!("  {mnemonic}\n"));
+                }
+                Instruction::Cast(ty) => {
+                    self.output.push_str("  pop rax\n");
+                    match ty {
+                        IrType::Char | IrType::U8 | IrType::Bool => {
+                            self.output.push_str("  movzx eax, al\n")
+                        }
+                        IrType::U16 => self.output.push_str("  movzx eax, ax\n"),
+                        IrType::U32 => self.output.push_str("  mov eax, eax\n"),
+                        IrType::I32 => self.output.push_str("  movsxd rax, eax\n"),
+                        IrType::U64
+                        | IrType::I64
+                        | IrType::Int
+                        | IrType::Pointer(_, _)
+                        | IrType::Struct(_)
+                        | IrType::Void => {}
+                    }
+                    self.output.push_str("  push rax\n");
                 }
                 Instruction::Pop => self.output.push_str("  add rsp, 8\n"),
                 Instruction::Branch {
@@ -341,8 +408,9 @@ impl Generator {
 
 #[cfg(test)]
 mod tests {
-    use super::emit;
+    use super::{emit, emit_for_target};
     use crate::parser::parse;
+    use crate::target::Target;
 
     #[test]
     fn emits_from_ir_for_arithmetic_and_return() {
@@ -379,6 +447,21 @@ mod tests {
         assert!(assembly.contains(".globl _start"));
         assert!(assembly.contains("call main"));
         assert!(assembly.contains("mov rax, 60"));
+    }
+
+    #[test]
+    fn emits_kernel_interrupt_intrinsics_only_for_krumpyos() {
+        let program = parse("void main() { cli(); sti(); pause(); hlt(); }").unwrap();
+        let assembly = emit_for_target(&program, Target::X86_64KrumpyOs).unwrap();
+        assert!(assembly.contains("  cli\n"));
+        assert!(assembly.contains("  sti\n"));
+        assert!(assembly.contains("  pause\n"));
+        assert!(assembly.contains("  hlt\n"));
+
+        let error = emit_for_target(&program, Target::X86_64SystemV).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("privileged interrupt intrinsics"));
     }
 
     #[test]
@@ -423,5 +506,102 @@ mod tests {
         .unwrap();
         let assembly = emit(&program).unwrap();
         assert!(assembly.contains("sub rsp, 17"));
+    }
+
+    #[test]
+    fn krumpyos_intrinsics_emit_expected_instructions() {
+        let program = parse(
+            "void write_serial(u16 port, u8 value) { cli(); outb(port, value); sti(); pause(); hlt(); } u8 read_serial(u16 port) { return inb(port); }",
+        )
+        .unwrap();
+        let assembly = emit_for_target(&program, Target::X86_64KrumpyOs).unwrap();
+        assert!(assembly.contains("cli"));
+        assert!(assembly.contains("out dx, al"));
+        assert!(assembly.contains("sti"));
+        assert!(assembly.contains("pause"));
+        assert!(assembly.contains("hlt"));
+        assert!(assembly.contains("in al, dx"));
+    }
+
+    #[test]
+    fn krumpyos_intrinsics_are_rejected_on_hosted_targets() {
+        let program =
+            parse("void write_serial(u16 port, u8 value) { outb(port, value); }").unwrap();
+        let error = emit_for_target(&program, Target::X86_64SystemV).unwrap_err();
+        assert!(error.message.contains("krumpyos"));
+
+        let program = parse("u8 read_serial(u16 port) { return inb(port); }").unwrap();
+        let error = emit_for_target(&program, Target::X86_64SystemV).unwrap_err();
+        assert!(error.message.contains("krumpyos"));
+
+        let program = parse("void idle() { cli(); }").unwrap();
+        let error = emit_for_target(&program, Target::X86_64SystemV).unwrap_err();
+        assert!(error.message.contains("krumpyos"));
+
+        let program = parse("void idle() { sti(); }").unwrap();
+        let error = emit_for_target(&program, Target::X86_64SystemV).unwrap_err();
+        assert!(error.message.contains("krumpyos"));
+
+        let program = parse("void idle() { hlt(); }").unwrap();
+        let error = emit_for_target(&program, Target::X86_64SystemV).unwrap_err();
+        assert!(error.message.contains("krumpyos"));
+
+        let program = parse("void idle() { pause(); }").unwrap();
+        let error = emit_for_target(&program, Target::X86_64SystemV).unwrap_err();
+        assert!(error.message.contains("krumpyos"));
+    }
+
+    #[test]
+    fn emits_no_instructions_for_same_width_pointer_integer_casts() {
+        let program = parse("u32* mmio(u64 address) { return (u32*)address; }").unwrap();
+        let assembly = emit(&program).unwrap();
+        // The value is already a full 64-bit quantity; casting between
+        // pointers and 64-bit integers is a pure type-system operation with
+        // no runtime cost.
+        assert!(!assembly.contains("movzx"));
+        assert!(!assembly.contains("movsxd"));
+    }
+
+    #[test]
+    fn emits_truncation_for_narrowing_casts() {
+        let program = parse("u8 truncate(u64 value) { return (u8)value; }").unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains("movzx eax, al"));
+    }
+
+    #[test]
+    fn emits_sign_extension_for_narrowing_i32_casts() {
+        let program = parse("i32 truncate(u64 value) { return (i32)value; }").unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains("movsxd rax, eax"));
+    }
+
+    #[test]
+    fn marks_volatile_dereference_loads_and_stores_in_assembly() {
+        let program = parse(
+            "void poke(volatile u16* port) { *port = (u16)1; } u16 peek(volatile u16* port) { return *port; }",
+        )
+        .unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains("; volatile store"));
+        assert!(assembly.contains("; volatile load"));
+    }
+
+    #[test]
+    fn marks_volatile_indexed_loads_and_stores_in_assembly() {
+        let program = parse(
+            "void write(volatile u16* buffer, int index) { buffer[index] = (u16)1; } u16 read(volatile u16* buffer, int index) { return buffer[index]; }",
+        )
+        .unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(assembly.contains("; volatile store"));
+        assert!(assembly.contains("; volatile load"));
+    }
+
+    #[test]
+    fn does_not_mark_plain_pointer_accesses_as_volatile_in_assembly() {
+        let program = parse("u16 read(u16* ptr) { return ptr[1]; }").unwrap();
+        let assembly = emit(&program).unwrap();
+        assert!(!assembly.contains("volatile"));
     }
 }
