@@ -30,6 +30,9 @@ All notable changes to K will be recorded here. The project is pre-1.0, so synta
 
 ## Unreleased
 
+- Added explicit IR returns for reachable function-end blocks so nested
+  control-flow blocks cannot be entered accidentally through assembly
+  fallthrough.
 - Aligned the compiler roadmap with the KrumpyOS product path: a distinct
   kernel and user-space target, a K compiler running as an ordinary KrumpyOS
   process, reproducible native builds, and `kpkg`-managed toolchain
