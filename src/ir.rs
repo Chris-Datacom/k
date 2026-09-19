@@ -339,7 +339,10 @@ fn lower_function(
         locals: &locals,
         structs,
     };
-    builder.block(0, &function.body);
+    let end = builder.block(0, &function.body);
+    if !builder.terminated(end) {
+        builder.push(end, Instruction::Return { has_value: false });
+    }
     let blocks = builder.blocks;
 
     (
@@ -1159,9 +1162,30 @@ mod tests {
                 Instruction::Cli,
                 Instruction::Sti,
                 Instruction::Hlt,
-                Instruction::Pause
+                Instruction::Pause,
+                Instruction::Return { has_value: false }
             ]
         );
+    }
+
+    #[test]
+    fn terminates_nested_loop_continuation_at_function_end() {
+        let program = parse(
+            "void fill(u64* pages) { let outer = 0; while (outer < 4) { let inner = 0; while (inner < 512) { pages[inner] = (u64)0; inner = inner + 1; } outer = outer + 1; } }",
+        )
+        .unwrap();
+        let ir = lower(&program).unwrap();
+        let function = ir.function("fill").unwrap();
+        assert!(function.blocks.iter().all(|block| {
+            matches!(
+                block.instructions.last(),
+                Some(
+                    Instruction::Return { .. }
+                        | Instruction::Jump { .. }
+                        | Instruction::Branch { .. }
+                )
+            )
+        }));
     }
 
     #[test]

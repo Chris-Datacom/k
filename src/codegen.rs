@@ -438,6 +438,8 @@ impl Generator {
                 Instruction::Return { has_value } => {
                     if *has_value {
                         self.output.push_str("  pop rax\n");
+                    } else {
+                        self.output.push_str("  mov rax, 0\n");
                     }
                     self.output.push_str(&format!("  jmp {return_label}\n"));
                 }
