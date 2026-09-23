@@ -66,13 +66,16 @@ boot-stub milestone.
 
 - `lexer`: converts source bytes into tokens and reports spans.
 - `parser`: validates grammar and creates the source-spanned untyped syntax tree in `src/parser.rs`.
-- `sema`: resolves declarations, scopes, types, and invalid operations.
+- `sema`: resolves declarations, scopes, types, invalid operations, and enforces definite-return verification on non-void functions.
 - `ir`: lowers checked programs into typed locals, basic blocks, explicit
   constants, loads/stores, arithmetic, calls, and control-flow instructions;
-  it also performs constant folding, unreachable-block pruning, and
-  deterministic ordered struct layouts with explicit field offsets.
+  it enforces strict IR control-flow validation (valid block indices `0..N`, entry block 0,
+  every block terminated by `Return`, `Jump`, or `Branch`, no dead instructions after terminators,
+  and in-range jump targets), performs constant folding with signedness awareness,
+  unreachable-block pruning, and deterministic struct layouts with natural alignment and padding.
 - `codegen`: emits deterministic x86-64 System V assembly for the first
-  supported target. It has no runtime or libc dependency, which is the first
+  supported target with signed vs. unsigned instruction selection (`idiv`/`div`, `sar`/`shr`, `setl`/`setb`, etc.)
+  and padded struct stack frames. It has no runtime or libc dependency, which is the first
   step toward a freestanding kernel toolchain.
 - Fixed-width loads and stores use the IR type to select byte, word, dword,
   or qword operations; narrow values are extended into the virtual stack
@@ -101,8 +104,8 @@ boot-stub milestone.
   (`; volatile load` / `; volatile store`); its purpose is to make later
   optimization work MMIO-safe by construction instead of by review.
 - `driver`: coordinates stages and diagnostics without embedding policy in them.
-- `driver::compile_source`: the filesystem-independent source-buffer API;
-  filesystem reads and writes remain in the command-line binary.
+- `driver::compile_source` & `driver::compile_sources`: the filesystem-independent source-buffer API supporting single- and multi-file compilation;
+  merges parsed ASTs in source order, deduplicates forward declarations against definitions, checks for conflicts, and compiles the combined program deterministically. Filesystem reads and writes remain in the command-line binary.
 
 ## Design constraints
 

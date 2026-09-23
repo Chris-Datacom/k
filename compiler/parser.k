@@ -2597,6 +2597,49 @@ int semantic_statement_range(
     return 1;
 }
 
+int semantic_range_definitely_returns(
+    struct StatementArena* statements,
+    int start,
+    int count
+) {
+    let index = start;
+    let end = start + count;
+    while (index < end) {
+        let statement = &statements.nodes[index];
+        if (statement.kind == 2) {
+            return 1;
+        }
+        if (statement.kind == 5) {
+            if (semantic_range_definitely_returns(
+                statements,
+                statement.body_start,
+                statement.body_count
+            ) == 1) {
+                return 1;
+            }
+        }
+        if (statement.kind == 6) {
+            if (statement.else_count > 0) {
+                if (semantic_range_definitely_returns(
+                    statements,
+                    statement.body_start,
+                    statement.body_count
+                ) == 1) {
+                    if (semantic_range_definitely_returns(
+                        statements,
+                        statement.else_start,
+                        statement.else_count
+                    ) == 1) {
+                        return 1;
+                    }
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return 0;
+}
+
 int semantic_check_program(
     struct SemanticChecker* checker,
     struct AstProgram* program,
@@ -2631,6 +2674,16 @@ int semantic_check_program(
             function.body_count
         ) == 0) {
             return 0;
+        }
+        if (function.return_type != 3) {
+            if (semantic_range_definitely_returns(
+                checker.statement_arena,
+                function.body_start,
+                function.body_count
+            ) == 0) {
+                checker.error = 15;
+                return 0;
+            }
         }
         function_index = function_index + 1;
     }
@@ -3371,6 +3424,13 @@ int ir_lower_program(
         ) == 0) {
             return 0;
         }
+        if (ir_block_terminated(ir) == 0) {
+            let result = ir_emit_node(ir, 11, 0, function.return_type, -1, 0);
+            if (result < 0) {
+                return 0;
+            }
+            ir.instructions[result].extra = 0;
+        }
         output.count = ir.instruction_count - output.start;
         output.block_count = ir.block_count;
         ir.function_count = ir.function_count + 1;
@@ -3389,12 +3449,17 @@ int ir_valid_instruction_kind(int kind) {
     return 1;
 }
 
-int ir_validate_block(struct IrStorage* ir, int block_index) {
-    if (block_index < 0) {
+int ir_validate_block(
+    struct IrStorage* ir,
+    int block_index,
+    int block_start,
+    int block_count
+) {
+    if (block_index < block_start) {
         ir.error = 8;
         return 0;
     }
-    if (block_index >= ir.block_count) {
+    if (block_index >= block_start + block_count) {
         ir.error = 8;
         return 0;
     }
@@ -3407,7 +3472,7 @@ int ir_validate_block(struct IrStorage* ir, int block_index) {
         ir.error = 8;
         return 0;
     }
-    if (block.count < 0) {
+    if (block.count <= 0) {
         ir.error = 8;
         return 0;
     }
@@ -3423,31 +3488,62 @@ int ir_validate_block(struct IrStorage* ir, int block_index) {
             ir.error = 8;
             return 0;
         }
-        if (instruction.kind == 12) {
-            if (ir_validate_block(ir, instruction.left) == 0) {
+        if (instruction.kind == 11) {
+            if (instruction_index < end - 1) {
+                ir.error = 8;
                 return 0;
             }
-            if (ir_validate_block(ir, instruction.right) == 0) {
+            if (instruction.extra < 0) {
+                ir.error = 8;
+                return 0;
+            }
+            if (instruction.extra > 1) {
+                ir.error = 8;
                 return 0;
             }
         } else {
-            if (instruction.kind == 13) {
-                if (ir_validate_block(ir, instruction.left) == 0) {
+            if (instruction.kind == 12) {
+                if (instruction_index < end - 1) {
+                    ir.error = 8;
+                    return 0;
+                }
+                if (instruction.left < block_start) {
+                    ir.error = 8;
+                    return 0;
+                }
+                if (instruction.left >= block_start + block_count) {
+                    ir.error = 8;
+                    return 0;
+                }
+                if (instruction.right < block_start) {
+                    ir.error = 8;
+                    return 0;
+                }
+                if (instruction.right >= block_start + block_count) {
+                    ir.error = 8;
                     return 0;
                 }
             } else {
-                if (instruction.kind == 7) {
-                    if (instruction.extra < 0) {
+                if (instruction.kind == 13) {
+                    if (instruction_index < end - 1) {
+                        ir.error = 8;
+                        return 0;
+                    }
+                    if (instruction.left < block_start) {
+                        ir.error = 8;
+                        return 0;
+                    }
+                    if (instruction.left >= block_start + block_count) {
                         ir.error = 8;
                         return 0;
                     }
                 } else {
-                    if (instruction.kind == 11) {
+                    if (instruction.kind == 7) {
                         if (instruction.extra < 0) {
                             ir.error = 8;
                             return 0;
                         }
-                        if (instruction.extra > 1) {
+                        if (instruction.extra > 6) {
                             ir.error = 8;
                             return 0;
                         }
@@ -3456,6 +3552,15 @@ int ir_validate_block(struct IrStorage* ir, int block_index) {
             }
         }
         instruction_index = instruction_index + 1;
+    }
+    let last_kind = ir.instructions[end - 1].kind;
+    if (last_kind != 11) {
+        if (last_kind != 12) {
+            if (last_kind != 13) {
+                ir.error = 8;
+                return 0;
+            }
+        }
     }
     return 1;
 }
@@ -3515,7 +3620,12 @@ int ir_validate(struct IrStorage* ir) {
         let block_index = function.block_start;
         let block_end = function.block_start + function.block_count;
         while (block_index < block_end) {
-            if (ir_validate_block(ir, block_index) == 0) {
+            if (ir_validate_block(
+                ir,
+                block_index,
+                function.block_start,
+                function.block_count
+            ) == 0) {
                 return 0;
             }
             block_index = block_index + 1;

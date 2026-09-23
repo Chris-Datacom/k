@@ -110,13 +110,37 @@ struct Token {
 
 Named struct types may be used in function signatures, and fields are selected
 with `value.field`. A pointer to a struct may also use the same selector; the
-compiler treats it as implicit dereference for this prototype. Struct layout is
-ordered and has no hidden allocation or runtime metadata. Field offsets and
-complete aggregate lowering are still being completed before this syntax is
-used by the self-hosted compiler. Local struct storage is supported with a
-declaration such as `struct Token token;`; the compiler reserves the complete
-layout size in the function frame, and the declaration is initially
-uninitialized.
+compiler treats it as implicit dereference for this prototype.
+
+### Struct alignment and padding
+
+Struct layouts are stable, deterministic, and follow natural alignment rules:
+1. Primitive alignments:
+   - `u8`, `char`, `bool`: 1 byte (size 1)
+   - `u16`: 2 bytes (size 2)
+   - `u32`, `i32`: 4 bytes (size 4)
+   - `u64`, `i64`, `int`, pointers: 8 bytes (size 8)
+2. Struct alignment is the maximum alignment across all its fields (`max(field_alignments)`), with a minimum of 1 byte.
+3. Field offsets are placed in declaration order, with padding bytes inserted so that each field's offset is an exact multiple of that field's natural alignment: `offset = (prev_offset + align - 1) & ~(align - 1)`.
+4. The total size of a struct is rounded up to a multiple of the struct's alignment so that arrays of structs maintain proper alignment for all elements.
+
+Local struct storage is supported with declarations such as `struct Token token;`; the compiler reserves the padded struct layout size in the function stack frame.
+
+## Control Flow & Definite Return
+
+Every function with a non-void return type is subject to definite-return checking:
+- All execution paths through the function body must terminate with a `return` statement.
+- In `if/else` statements, both the `if` and `else` branches must definitely return for the construct to count as returning.
+- Infinite loops (`while (true)` or `while (1)`) are recognized as non-fallthrough blocks: execution cannot proceed past the loop body.
+- Missing returns on any branch in a non-void function trigger a semantic compile error.
+
+## Integer Signedness, Overflow, and Conversions
+
+Integer arithmetic and comparisons adhere to strict signedness semantics:
+- **Signed types**: `int`, `i32`, `i64`. Comparisons lower to signed conditions (`jl`, `jle`, `jg`, `jge`, `setl`, etc.). Division and modulo lower to sign-extended signed operations (`cqo; idiv`). Right shift lowers to arithmetic shift (`sar`).
+- **Unsigned types**: `u8`, `u16`, `u32`, `u64`, `char`, `bool`, and pointers. Comparisons lower to unsigned conditions (`jb`, `jbe`, `ja`, `jae`, `setb`, etc.). Division and modulo lower to zero-extended unsigned operations (`xor rdx, rdx; div`). Right shift lowers to logical shift (`shr`).
+- **Overflow behavior**: Integer overflow is defined as two's complement wrapping arithmetic.
+- **Conversions**: Explicit casts `(type)expr` between scalar types are supported. Widening sign-extends signed types and zero-extends unsigned types; narrowing emits register truncations to match the target bit width.
 
 ## Extern declarations
 

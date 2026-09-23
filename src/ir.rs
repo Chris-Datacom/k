@@ -138,6 +138,7 @@ impl TypedProgram {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StructLayout {
     pub size: i64,
+    pub align: i64,
     pub fields: BTreeMap<String, StructFieldLayout>,
 }
 
@@ -168,36 +169,193 @@ pub fn lower(program: &Program) -> Result<TypedProgram, Vec<sema::SemanticError>
             (name, function)
         })
         .collect();
-    Ok(TypedProgram { structs, functions })
+    let typed = TypedProgram { structs, functions };
+    if let Err(validation_errors) = validate(&typed) {
+        return Err(validation_errors
+            .into_iter()
+            .map(|message| sema::SemanticError {
+                span: program.span,
+                message,
+            })
+            .collect());
+    }
+    Ok(typed)
+}
+
+pub fn validate(program: &TypedProgram) -> Result<(), Vec<String>> {
+    let mut errors = Vec::new();
+    for (func_name, function) in &program.functions {
+        if function.blocks.is_empty() {
+            errors.push(format!("function `{func_name}` has no basic blocks"));
+            continue;
+        }
+        if function.blocks[0].id != 0 {
+            errors.push(format!("function `{func_name}` entry block must have id 0"));
+        }
+        let block_count = function.blocks.len();
+        for (index, block) in function.blocks.iter().enumerate() {
+            if block.id != index {
+                errors.push(format!(
+                    "function `{func_name}` block at index {index} has mismatched id {}",
+                    block.id
+                ));
+            }
+            if block.instructions.is_empty() {
+                errors.push(format!(
+                    "function `{func_name}` block {} has no instructions",
+                    block.id
+                ));
+                continue;
+            }
+            let last_idx = block.instructions.len() - 1;
+            for (inst_idx, instruction) in block.instructions.iter().enumerate() {
+                let is_terminator = matches!(
+                    instruction,
+                    Instruction::Return { .. }
+                        | Instruction::Jump { .. }
+                        | Instruction::Branch { .. }
+                );
+                if is_terminator && inst_idx < last_idx {
+                    errors.push(format!(
+                        "function `{func_name}` block {} has instructions after terminator at instruction {inst_idx}",
+                        block.id
+                    ));
+                }
+                match instruction {
+                    Instruction::Jump { target } => {
+                        if *target >= block_count {
+                            errors.push(format!(
+                                "function `{func_name}` block {} jumps to invalid target block {target} (total blocks: {block_count})",
+                                block.id
+                            ));
+                        }
+                    }
+                    Instruction::Branch {
+                        then_block,
+                        else_block,
+                    } => {
+                        if *then_block >= block_count {
+                            errors.push(format!(
+                                "function `{func_name}` block {} branches to invalid then block {then_block} (total blocks: {block_count})",
+                                block.id
+                            ));
+                        }
+                        if *else_block >= block_count {
+                            errors.push(format!(
+                                "function `{func_name}` block {} branches to invalid else block {else_block} (total blocks: {block_count})",
+                                block.id
+                            ));
+                        }
+                    }
+                    Instruction::LoadLocal { name, .. }
+                    | Instruction::StoreLocal { name, .. }
+                    | Instruction::AddressLocal { name, .. } => {
+                        if !function.locals.iter().any(|l| l.name == *name) {
+                            errors.push(format!(
+                                "function `{func_name}` references unknown local `{name}`",
+                            ));
+                        }
+                    }
+                    Instruction::FieldAddress { offset, .. } => {
+                        if *offset < 0 {
+                            errors.push(format!(
+                                "function `{func_name}` has negative field offset {offset}",
+                            ));
+                        }
+                    }
+                    Instruction::Scale { bytes } => {
+                        if *bytes <= 0 {
+                            errors.push(format!(
+                                "function `{func_name}` has invalid scale factor {bytes}",
+                            ));
+                        }
+                    }
+                    Instruction::Call { arguments, .. } => {
+                        if *arguments > 6 {
+                            errors.push(format!(
+                                "function `{func_name}` calls function with {arguments} arguments (max 6 supported)",
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !matches!(
+                block.instructions.last(),
+                Some(Instruction::Return { .. })
+                    | Some(Instruction::Jump { .. })
+                    | Some(Instruction::Branch { .. })
+            ) {
+                errors.push(format!(
+                    "function `{func_name}` block {} does not end with a terminator",
+                    block.id
+                ));
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+pub fn ir_alignment(ty: &IrType, structs: &BTreeMap<String, StructLayout>) -> i64 {
+    match ty {
+        IrType::Char | IrType::U8 | IrType::Bool => 1,
+        IrType::U16 => 2,
+        IrType::U32 | IrType::I32 => 4,
+        IrType::U64 | IrType::I64 | IrType::Int | IrType::Pointer(_, _) | IrType::Void => 8,
+        IrType::Struct(name) => structs.get(name).map(|s| s.align).unwrap_or(8),
+    }
+}
+
+pub fn ir_size(ty: &IrType, structs: &BTreeMap<String, StructLayout>) -> i64 {
+    match ty {
+        IrType::Char | IrType::U8 | IrType::Bool => 1,
+        IrType::U16 => 2,
+        IrType::U32 | IrType::I32 => 4,
+        IrType::U64 | IrType::I64 | IrType::Int | IrType::Pointer(_, _) | IrType::Void => 8,
+        IrType::Struct(name) => structs.get(name).map(|s| s.size).unwrap_or(8),
+    }
 }
 
 fn build_struct_layouts(program: &Program) -> BTreeMap<String, StructLayout> {
-    program
-        .structs
-        .iter()
-        .map(|definition| {
-            let mut offset = 0;
-            let fields = definition
-                .fields
-                .iter()
-                .map(|field| {
-                    let layout = StructFieldLayout {
-                        offset,
-                        ty: ir_type(&field.ty),
-                    };
-                    offset += ir_size(&layout.ty);
-                    (field.name.clone(), layout)
-                })
-                .collect();
-            (
-                definition.name.clone(),
-                StructLayout {
-                    size: offset,
-                    fields,
-                },
-            )
-        })
-        .collect()
+    let mut layouts = BTreeMap::new();
+    for definition in &program.structs {
+        let mut offset = 0i64;
+        let mut max_align = 1i64;
+        let mut fields = BTreeMap::new();
+        for field in &definition.fields {
+            let ty = ir_type(&field.ty);
+            let field_align = ir_alignment(&ty, &layouts);
+            let field_size = ir_size(&ty, &layouts);
+            if field_align > max_align {
+                max_align = field_align;
+            }
+            if offset % field_align != 0 {
+                offset += field_align - (offset % field_align);
+            }
+            let layout = StructFieldLayout {
+                offset,
+                ty,
+            };
+            offset += field_size;
+            fields.insert(field.name.clone(), layout);
+        }
+        if offset % max_align != 0 {
+            offset += max_align - (offset % max_align);
+        }
+        layouts.insert(
+            definition.name.clone(),
+            StructLayout {
+                size: offset,
+                align: max_align,
+                fields,
+            },
+        );
+    }
+    layouts
 }
 
 fn fold_constants(program: &Program) -> Program {
@@ -380,7 +538,7 @@ fn fold_instruction_constants(instructions: &mut Vec<Instruction>) {
                     Instruction::Constant(value) => value,
                     _ => unreachable!(),
                 };
-                match constant_binary(operator, left, right) {
+                match constant_binary(operator, &ty, left, right) {
                     Some(value) => Some(vec![Instruction::Constant(value)]),
                     None => Some(vec![
                         Instruction::Constant(left),
@@ -398,12 +556,25 @@ fn fold_instruction_constants(instructions: &mut Vec<Instruction>) {
     *instructions = folded;
 }
 
-fn constant_binary(operator: BinaryOperator, left: i64, right: i64) -> Option<i64> {
+fn is_signed(ty: &IrType) -> bool {
+    matches!(ty, IrType::Int | IrType::I32 | IrType::I64)
+}
+
+fn constant_binary(operator: BinaryOperator, ty: &IrType, left: i64, right: i64) -> Option<i64> {
+    let signed = is_signed(ty);
     match operator {
         BinaryOperator::Add => Some(left.wrapping_add(right)),
         BinaryOperator::Subtract => Some(left.wrapping_sub(right)),
         BinaryOperator::Multiply => Some(left.wrapping_mul(right)),
-        BinaryOperator::Divide if right != 0 => Some(left.wrapping_div(right)),
+        BinaryOperator::Divide => {
+            if right == 0 {
+                None
+            } else if signed {
+                Some(left.wrapping_div(right))
+            } else {
+                Some(((left as u64) / (right as u64)) as i64)
+            }
+        }
         BinaryOperator::BitwiseAnd => Some(left & right),
         BinaryOperator::BitwiseOr => Some(left | right),
         BinaryOperator::BitwiseXor => Some(left ^ right),
@@ -411,15 +582,43 @@ fn constant_binary(operator: BinaryOperator, left: i64, right: i64) -> Option<i6
             Some(left.wrapping_shl(right as u32))
         }
         BinaryOperator::ShiftRight if (0..64).contains(&right) => {
-            Some(left.wrapping_shr(right as u32))
+            if signed {
+                Some(left.wrapping_shr(right as u32))
+            } else {
+                Some(((left as u64).wrapping_shr(right as u32)) as i64)
+            }
         }
         BinaryOperator::Equal => Some(i64::from(left == right)),
         BinaryOperator::NotEqual => Some(i64::from(left != right)),
-        BinaryOperator::Less => Some(i64::from(left < right)),
-        BinaryOperator::LessEqual => Some(i64::from(left <= right)),
-        BinaryOperator::Greater => Some(i64::from(left > right)),
-        BinaryOperator::GreaterEqual => Some(i64::from(left >= right)),
-        BinaryOperator::Divide | BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => None,
+        BinaryOperator::Less => {
+            if signed {
+                Some(i64::from(left < right))
+            } else {
+                Some(i64::from((left as u64) < (right as u64)))
+            }
+        }
+        BinaryOperator::LessEqual => {
+            if signed {
+                Some(i64::from(left <= right))
+            } else {
+                Some(i64::from((left as u64) <= (right as u64)))
+            }
+        }
+        BinaryOperator::Greater => {
+            if signed {
+                Some(i64::from(left > right))
+            } else {
+                Some(i64::from((left as u64) > (right as u64)))
+            }
+        }
+        BinaryOperator::GreaterEqual => {
+            if signed {
+                Some(i64::from(left >= right))
+            } else {
+                Some(i64::from((left as u64) >= (right as u64)))
+            }
+        }
+        BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => None,
     }
 }
 
@@ -717,13 +916,14 @@ impl FunctionBuilder<'_> {
                 right,
                 ..
             } => {
+                let operand_type = self.expression_type(left);
                 self.expression(id, left);
                 self.expression(id, right);
                 self.push(
                     id,
                     Instruction::Binary {
                         operator: *operator,
-                        ty: self.expression_type(expression),
+                        ty: operand_type,
                     },
                 );
             }
@@ -1096,25 +1296,10 @@ fn ir_type(ty: &Type) -> IrType {
 fn pointee_size(ty: &IrType) -> i64 {
     match ty {
         IrType::Pointer(inner, _) => pointee_size(inner),
-        IrType::Char => 1,
-        IrType::U8 => 1,
+        IrType::Char | IrType::U8 | IrType::Bool => 1,
         IrType::U16 => 2,
         IrType::U32 | IrType::I32 => 4,
-        IrType::U64 | IrType::I64 => 8,
-        IrType::Bool => 1,
-        IrType::Int | IrType::Void | IrType::Struct(_) => 8,
-    }
-}
-
-fn ir_size(ty: &IrType) -> i64 {
-    match ty {
-        IrType::Struct(_) => 8,
-        IrType::Void | IrType::Int | IrType::Pointer(_, _) => 8,
-        IrType::Char | IrType::Bool => 1,
-        IrType::U8 => 1,
-        IrType::U16 => 2,
-        IrType::U32 | IrType::I32 => 4,
-        IrType::U64 | IrType::I64 => 8,
+        IrType::U64 | IrType::I64 | IrType::Int | IrType::Void | IrType::Struct(_) => 8,
     }
 }
 
@@ -1241,31 +1426,48 @@ mod tests {
     }
 
     #[test]
-    fn records_ordered_struct_field_offsets() {
+    fn records_ordered_struct_field_offsets_with_natural_alignment_and_padding() {
         let program = parse(
             "struct Token { char kind; int start; int end; } int read(struct Token* token) { return token.start; }",
         )
         .unwrap();
         let ir = lower(&program).unwrap();
         let layout = &ir.structs["Token"];
-        assert_eq!(layout.size, 17);
+        assert_eq!(layout.align, 8);
+        assert_eq!(layout.size, 24);
         assert_eq!(layout.fields["kind"].offset, 0);
-        assert_eq!(layout.fields["start"].offset, 1);
-        assert_eq!(layout.fields["end"].offset, 9);
+        assert_eq!(layout.fields["start"].offset, 8);
+        assert_eq!(layout.fields["end"].offset, 16);
     }
 
     #[test]
-    fn records_fixed_width_struct_field_sizes() {
+    fn records_fixed_width_struct_field_sizes_and_padding() {
         let program = parse(
             "struct Header { u8 kind; u16 length; u32 checksum; u64 address; } int main() { return 0; }",
         )
         .unwrap();
         let ir = lower(&program).unwrap();
         let layout = &ir.structs["Header"];
-        assert_eq!(layout.size, 15);
+        assert_eq!(layout.align, 8);
+        assert_eq!(layout.size, 16);
         assert_eq!(layout.fields["kind"].offset, 0);
-        assert_eq!(layout.fields["length"].offset, 1);
-        assert_eq!(layout.fields["checksum"].offset, 3);
-        assert_eq!(layout.fields["address"].offset, 7);
+        assert_eq!(layout.fields["length"].offset, 2);
+        assert_eq!(layout.fields["checksum"].offset, 4);
+        assert_eq!(layout.fields["address"].offset, 8);
+    }
+
+    #[test]
+    fn validates_ir_structure_and_control_flow() {
+        let program = parse("int main() { let x = 1; if (x > 0) { return 42; } else { return 0; } }").unwrap();
+        let ir = lower(&program).unwrap();
+        assert!(super::validate(&ir).is_ok());
+    }
+
+    #[test]
+    fn folds_signed_and_unsigned_operations_appropriately() {
+        assert_eq!(super::constant_binary(BinaryOperator::Divide, &IrType::Int, -10, 2), Some(-5));
+        assert_eq!(super::constant_binary(BinaryOperator::Divide, &IrType::U64, -10, 2), Some(((-10i64 as u64) / 2) as i64));
+        assert_eq!(super::constant_binary(BinaryOperator::Less, &IrType::Int, -1, 1), Some(1));
+        assert_eq!(super::constant_binary(BinaryOperator::Less, &IrType::U64, -1, 1), Some(0));
     }
 }
