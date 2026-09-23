@@ -1,5 +1,6 @@
 compiler/lexer.k
 compiler/parser.k
 compiler/backend.k
+compiler/driver.k
 compiler/hello.k
 compiler/main.k

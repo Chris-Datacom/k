@@ -40,12 +40,93 @@ pub fn compile_source(source: &str) -> Result<String, CompileError> {
 
 /// Compile one complete K source buffer for an explicit target.
 pub fn compile_source_for_target(source: &str, target: Target) -> Result<String, CompileError> {
+    compile_sources_for_target(&[source], target)
+}
+
+/// Compile multiple K source buffers together into deterministic target assembly.
+pub fn compile_sources(sources: &[&str]) -> Result<String, CompileError> {
+    compile_sources_for_target(sources, Target::default())
+}
+
+/// Compile multiple K source buffers together for an explicit target.
+pub fn compile_sources_for_target(sources: &[&str], target: Target) -> Result<String, CompileError> {
     if !target.is_implemented() {
         return Err(CompileError::UnsupportedTarget(target));
     }
-    let program = parser::parse(source).map_err(CompileError::Parse)?;
-    sema::check(&program).map_err(CompileError::Semantic)?;
-    codegen::emit_for_target(&program, target).map_err(CompileError::Codegen)
+    let mut parsed_programs = Vec::with_capacity(sources.len());
+    for source in sources {
+        let program = parser::parse(source).map_err(CompileError::Parse)?;
+        parsed_programs.push(program);
+    }
+    let combined = combine_programs(&parsed_programs)?;
+    sema::check(&combined).map_err(CompileError::Semantic)?;
+    codegen::emit_for_target(&combined, target).map_err(CompileError::Codegen)
+}
+
+/// Combine multiple parsed K programs into a single compilation unit in deterministic order.
+pub fn combine_programs(programs: &[parser::Program]) -> Result<parser::Program, CompileError> {
+    if programs.is_empty() {
+        return Ok(parser::Program {
+            structs: Vec::new(),
+            extern_functions: Vec::new(),
+            functions: Vec::new(),
+            span: crate::lexer::Span::new(0, 0),
+        });
+    }
+    if programs.len() == 1 {
+        return Ok(programs[0].clone());
+    }
+
+    let mut structs = Vec::new();
+    let mut struct_names = std::collections::HashSet::new();
+    let mut extern_functions = Vec::new();
+    let mut extern_names = std::collections::HashSet::new();
+    let mut functions = Vec::new();
+    let mut function_names = std::collections::HashSet::new();
+
+    for program in programs {
+        for struct_def in &program.structs {
+            if !struct_names.insert(struct_def.name.clone()) {
+                return Err(CompileError::Semantic(vec![sema::SemanticError {
+                    span: struct_def.span,
+                    message: format!("duplicate struct `{}` in multi-file compilation", struct_def.name),
+                }]));
+            }
+            structs.push(struct_def.clone());
+        }
+
+        for func in &program.functions {
+            if !function_names.insert(func.name.clone()) {
+                return Err(CompileError::Semantic(vec![sema::SemanticError {
+                    span: func.span,
+                    message: format!("duplicate function `{}` in multi-file compilation", func.name),
+                }]));
+            }
+            functions.push(func.clone());
+        }
+
+        for extern_func in &program.extern_functions {
+            if !extern_names.contains(&extern_func.name) {
+                extern_names.insert(extern_func.name.clone());
+                extern_functions.push(extern_func.clone());
+            }
+        }
+    }
+
+    // Filter out extern declarations if a concrete definition is provided
+    extern_functions.retain(|ext| !function_names.contains(&ext.name));
+
+    let span = crate::lexer::Span::new(
+        programs.first().unwrap().span.start,
+        programs.last().unwrap().span.end,
+    );
+
+    Ok(parser::Program {
+        structs,
+        extern_functions,
+        functions,
+        span,
+    })
 }
 
 #[cfg(test)]
@@ -219,5 +300,29 @@ mod tests {
         assert!(source.contains("ir_lower_program"));
         assert!(source.contains("ir_validate"));
         assert!(source.contains("backend_emit_function"));
+    }
+
+    #[test]
+    fn compiles_multi_file_program_reproducibly() {
+        let file1 = "struct Point { int x; int y; } extern int get_y(struct Point* p); int get_x(struct Point* p) { return p.x; }";
+        let file2 = "struct Point { int x; int y; } int get_y(struct Point* p) { return p.y; } int main() { struct Point pt; pt.x = 10; pt.y = 20; return get_x(&pt) + get_y(&pt); }";
+        let assembly = super::compile_sources(&[file1, file2]).expect("multi-file compilation should succeed");
+        assert!(assembly.contains(".globl get_x"));
+        assert!(assembly.contains(".globl get_y"));
+        assert!(assembly.contains(".globl main"));
+    }
+
+    #[test]
+    fn compiles_compiler_modules_via_multi_file() {
+        let lexer = include_str!("../compiler/lexer.k");
+        let parser = include_str!("../compiler/parser.k");
+        let backend = include_str!("../compiler/backend.k");
+        let driver = include_str!("../compiler/driver.k");
+        let main = include_str!("../compiler/main.k");
+        let assembly = super::compile_sources(&[parser, backend, driver, main]).expect("multi-file compiler should compile");
+        assert!(assembly.contains(".globl compiler_init"));
+        assert!(assembly.contains(".globl compiler_emit_backend"));
+        assert!(assembly.contains(".globl main"));
+        let _ = lexer;
     }
 }

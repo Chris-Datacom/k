@@ -78,6 +78,10 @@ struct Generator {
     target: Target,
 }
 
+fn is_signed(ty: &IrType) -> bool {
+    matches!(ty, IrType::Int | IrType::I32 | IrType::I64)
+}
+
 fn ir_size(ty: &IrType, structs: &BTreeMap<String, i64>) -> i32 {
     match ty {
         IrType::Struct(name) => structs.get(name).copied().unwrap_or(8) as i32,
@@ -280,9 +284,9 @@ impl Generator {
                         return Err(self.error("address-of must be lowered as an address"))
                     }
                 },
-                Instruction::Binary { operator, .. } => {
+                Instruction::Binary { operator, ty } => {
                     self.output.push_str("  pop rdi\n  pop rax\n");
-                    self.binary(*operator);
+                    self.binary(*operator, ty);
                     self.output.push_str("  push rax\n");
                 }
                 Instruction::Call {
@@ -448,31 +452,56 @@ impl Generator {
         Ok(())
     }
 
-    fn binary(&mut self, operator: BinaryOperator) {
+    fn binary(&mut self, operator: BinaryOperator, ty: &IrType) {
+        let signed = is_signed(ty);
         match operator {
             BinaryOperator::Add => self.output.push_str("  add rax, rdi\n"),
             BinaryOperator::Subtract => self.output.push_str("  sub rax, rdi\n"),
             BinaryOperator::Multiply => self.output.push_str("  imul rax, rdi\n"),
-            BinaryOperator::Divide => self.output.push_str("  cqo\n  idiv rdi\n"),
+            BinaryOperator::Divide => {
+                if signed {
+                    self.output.push_str("  cqo\n  idiv rdi\n");
+                } else {
+                    self.output.push_str("  xor rdx, rdx\n  div rdi\n");
+                }
+            }
             BinaryOperator::BitwiseAnd => self.output.push_str("  and rax, rdi\n"),
             BinaryOperator::BitwiseOr => self.output.push_str("  or rax, rdi\n"),
             BinaryOperator::BitwiseXor => self.output.push_str("  xor rax, rdi\n"),
             BinaryOperator::ShiftLeft => self.output.push_str("  mov rcx, rdi\n  shl rax, cl\n"),
-            BinaryOperator::ShiftRight => self.output.push_str("  mov rcx, rdi\n  shr rax, cl\n"),
-            BinaryOperator::Equal
-            | BinaryOperator::NotEqual
-            | BinaryOperator::Less
+            BinaryOperator::ShiftRight => {
+                if signed {
+                    self.output.push_str("  mov rcx, rdi\n  sar rax, cl\n");
+                } else {
+                    self.output.push_str("  mov rcx, rdi\n  shr rax, cl\n");
+                }
+            }
+            BinaryOperator::Equal | BinaryOperator::NotEqual => {
+                let condition = if operator == BinaryOperator::Equal { "e" } else { "ne" };
+                self.output.push_str(&format!(
+                    "  cmp rax, rdi\n  set{condition} al\n  movzx rax, al\n"
+                ));
+            }
+            BinaryOperator::Less
             | BinaryOperator::LessEqual
             | BinaryOperator::Greater
             | BinaryOperator::GreaterEqual => {
-                let condition = match operator {
-                    BinaryOperator::Equal => "e",
-                    BinaryOperator::NotEqual => "ne",
-                    BinaryOperator::Less => "l",
-                    BinaryOperator::LessEqual => "le",
-                    BinaryOperator::Greater => "g",
-                    BinaryOperator::GreaterEqual => "ge",
-                    _ => unreachable!(),
+                let condition = if signed {
+                    match operator {
+                        BinaryOperator::Less => "l",
+                        BinaryOperator::LessEqual => "le",
+                        BinaryOperator::Greater => "g",
+                        BinaryOperator::GreaterEqual => "ge",
+                        _ => unreachable!(),
+                    }
+                } else {
+                    match operator {
+                        BinaryOperator::Less => "b",
+                        BinaryOperator::LessEqual => "be",
+                        BinaryOperator::Greater => "a",
+                        BinaryOperator::GreaterEqual => "ae",
+                        _ => unreachable!(),
+                    }
                 };
                 self.output.push_str(&format!(
                     "  cmp rax, rdi\n  set{condition} al\n  movzx rax, al\n"
@@ -593,7 +622,23 @@ mod tests {
         )
         .unwrap();
         let assembly = emit(&program).unwrap();
-        assert!(assembly.contains("sub rsp, 17"));
+        assert!(assembly.contains("sub rsp, 24"));
+    }
+
+    #[test]
+    fn emits_signed_and_unsigned_comparisons_and_operations() {
+        let signed_prog = parse("bool cmp(i64 a, i64 b) { return a < b; } i64 div(i64 a, i64 b) { return a / b; } i64 shr(i64 a, i64 b) { return a >> b; }").unwrap();
+        let signed_asm = emit(&signed_prog).unwrap();
+        assert!(signed_asm.contains("setl al"));
+        assert!(signed_asm.contains("idiv rdi"));
+        assert!(signed_asm.contains("sar rax, cl"));
+
+        let unsigned_prog = parse("bool cmp(u64 a, u64 b) { return a < b; } u64 div(u64 a, u64 b) { return a / b; } u64 shr(u64 a, u64 b) { return a >> b; }").unwrap();
+        let unsigned_asm = emit(&unsigned_prog).unwrap();
+        assert!(unsigned_asm.contains("setb al"));
+        assert!(unsigned_asm.contains("xor rdx, rdx"));
+        assert!(unsigned_asm.contains("div rdi"));
+        assert!(unsigned_asm.contains("shr rax, cl"));
     }
 
     #[test]

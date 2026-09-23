@@ -204,6 +204,15 @@ impl<'program> Checker<'program> {
             );
         }
         self.check_block(&function.body, &function.return_type);
+        if function.return_type != Type::Void && !block_definitely_returns(&function.body) {
+            self.error(
+                function.span,
+                format!(
+                    "missing return statement in non-void function `{}`",
+                    function.name
+                ),
+            );
+        }
         self.pop_scope();
     }
 
@@ -654,6 +663,32 @@ impl<'program> Checker<'program> {
     }
 }
 
+fn block_definitely_returns(block: &Block) -> bool {
+    for statement in &block.statements {
+        if statement_definitely_returns(statement) {
+            return true;
+        }
+    }
+    false
+}
+
+fn statement_definitely_returns(statement: &Statement) -> bool {
+    match statement {
+        Statement::Return { .. } => true,
+        Statement::Block(inner) => block_definitely_returns(inner),
+        Statement::If {
+            then_branch,
+            else_branch: Some(else_branch),
+            ..
+        } => block_definitely_returns(then_branch) && block_definitely_returns(else_branch),
+        Statement::While {
+            condition: Expression::Boolean { value: true, .. },
+            ..
+        } => true,
+        _ => false,
+    }
+}
+
 /// Casts are restricted to K's machine-model values: pointers and integers
 /// of any width may be reinterpreted as each other or as another pointer or
 /// integer type. `bool`, `void`, and `struct` values are not cast targets or
@@ -835,5 +870,35 @@ mod tests {
         let program = parse("extern int add(int a, int b); int main() { return add(1); }").unwrap();
         let errors = check(&program).unwrap_err();
         assert!(errors[0].message.contains("expected 2 arguments, found 1"));
+    }
+
+    #[test]
+    fn rejects_missing_return_in_non_void_function() {
+        let program = parse("int foo() { let x = 1; }").unwrap();
+        let errors = check(&program).unwrap_err();
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("missing return statement in non-void function `foo`")));
+    }
+
+    #[test]
+    fn rejects_missing_return_in_partial_branch() {
+        let program = parse("int foo(bool c) { if (c) { return 1; } }").unwrap();
+        let errors = check(&program).unwrap_err();
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("missing return statement in non-void function `foo`")));
+    }
+
+    #[test]
+    fn accepts_definite_return_in_both_branches() {
+        let program = parse("int foo(bool c) { if (c) { return 1; } else { return 2; } }").unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn accepts_infinite_while_loop_without_return() {
+        let program = parse("int loop() { while (true) { } }").unwrap();
+        assert!(check(&program).is_ok());
     }
 }
