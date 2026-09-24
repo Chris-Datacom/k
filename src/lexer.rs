@@ -15,6 +15,12 @@ pub struct Span {
     pub end: usize,
 }
 
+impl Span {
+    pub const fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+}
+
 impl fmt::Display for Span {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}..{}", self.start, self.end)

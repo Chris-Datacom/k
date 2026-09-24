@@ -183,6 +183,10 @@ impl Generator {
                         self.output.push_str(&format!("  mov rax, {value}\n  push rax\n"));
                     }
                 }
+                Instruction::AddressFunction { name } => {
+                    self.output
+                        .push_str(&format!("  lea rax, {name}[rip]\n  push rax\n"));
+                }
                 Instruction::StringLiteral(value) => {
                     let label = self.fresh_label("string");
                     self.rodata.push_str(&format!("{label}:\n  .byte "));

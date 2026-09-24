@@ -364,7 +364,12 @@ impl<'program> Checker<'program> {
             Expression::Index { base, index, span } => {
                 let base_type = self.check_expression(base);
                 let index_type = self.check_expression(index);
-                self.require_same(&ValueType::Int, &index_type, index.span(), "index");
+                if !is_integer(&index_type) && index_type != ValueType::Invalid {
+                    self.error(
+                        index.span(),
+                        format!("index requires an integer, found {}", index_type.display_name()),
+                    );
+                }
                 match base_type {
                     ValueType::Pointer(inner, _) => *inner,
                     ValueType::Invalid => ValueType::Invalid,
@@ -682,9 +687,28 @@ fn statement_definitely_returns(statement: &Statement) -> bool {
             ..
         } => block_definitely_returns(then_branch) && block_definitely_returns(else_branch),
         Statement::While {
-            condition: Expression::Boolean { value: true, .. },
+            condition,
             ..
-        } => true,
+        } => is_compile_time_true(condition),
+        _ => false,
+    }
+}
+
+fn is_compile_time_true(expression: &Expression) -> bool {
+    match expression {
+        Expression::Boolean { value, .. } => *value,
+        Expression::Binary {
+            left,
+            operator: BinaryOperator::Equal,
+            right,
+            ..
+        } => match (left.as_ref(), right.as_ref()) {
+            (
+                Expression::Integer { value: left, .. },
+                Expression::Integer { value: right, .. },
+            ) => left == right,
+            _ => false,
+        },
         _ => false,
     }
 }
@@ -698,6 +722,21 @@ fn is_castable(value_type: &ValueType) -> bool {
         value_type,
         ValueType::Pointer(_, _)
             | ValueType::Int
+            | ValueType::Char
+            | ValueType::U8
+            | ValueType::U16
+            | ValueType::U32
+            | ValueType::U64
+            | ValueType::I32
+            | ValueType::I64
+            | ValueType::Function { .. }
+    )
+}
+
+fn is_integer(value_type: &ValueType) -> bool {
+    matches!(
+        value_type,
+        ValueType::Int
             | ValueType::Char
             | ValueType::U8
             | ValueType::U16

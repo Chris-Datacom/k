@@ -52,6 +52,9 @@ pub enum Instruction {
         name: String,
         ty: IrType,
     },
+    AddressFunction {
+        name: String,
+    },
     FieldAddress {
         offset: i64,
         ty: IrType,
@@ -887,6 +890,13 @@ impl FunctionBuilder<'_> {
                         Instruction::LoadLocal {
                             name: value.clone(),
                             ty: local.ty.clone(),
+                        },
+                    );
+                } else {
+                    self.push(
+                        id,
+                        Instruction::AddressFunction {
+                            name: value.clone(),
                         },
                     );
                 }
